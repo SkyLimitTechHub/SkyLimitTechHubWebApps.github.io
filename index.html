@@ -1,0 +1,1844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car Sales Dataset Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        #modalContent {
+            resize: none;
+            position: relative;
+        }
+        .resize-handle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 10px;
+            cursor: ew-resize;
+            background: transparent;
+        }
+        .resize-handle.left {
+            left: -5px;
+        }
+        .resize-handle.right {
+            right: -5px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-6">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800">Car Sales Dataset Generator</h1>
+            <p class="text-lg text-gray-600 mt-2">Generate real-time car sales datasets with ETL every 5 seconds, up to 2TB</p>
+        </header>
+
+        <!-- Input Form -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Customize Dataset Size</h2>
+            <p class="text-gray-600 mb-4">Enter the number of rows for each table. Datasets are generated and cleaned (ETL) every 5 seconds in memory. View seven dashboards in a tabbed modal or download datasets. For >1M rows (up to 2TB), use the server-side Python script.</p>
+            <form id="datasetForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="numTransactions" class="block text-sm font-medium text-gray-700">Sales Transactions (min 1000, max 1M)</label>
+                    <input type="number" id="numTransactions" value="1000" min="1000" max="1000000" class="mt-1 p-2 w-full border rounded-md" required>
+                </div>
+                <div>
+                    <label for="numCars" class="block text-sm font-medium text-gray-700">Car Inventory (min 200, max 100K)</label>
+                    <input type="number" id="numCars" value="200" min="200" max="100000" class="mt-1 p-2 w-full border rounded-md" required>
+                </div>
+                <div>
+                    <label for="numCustomers" class="block text-sm font-medium text-gray-700">Customer Profiles (min 800, max 1M)</label>
+                    <input type="number" id="numCustomers" value="800" min="800" max="1000000" class="mt-1 p-2 w-full border rounded-md" required>
+                </div>
+                <div>
+                    <label for="numCampaigns" class="block text-sm font-medium text-gray-700">Marketing Campaigns (min 50, max 10K)</label>
+                    <input type="number" id="numCampaigns" value="50" min="50" max="10000" class="mt-1 p-2 w-full border rounded-md" required>
+                </div>
+            </form>
+            <div class="flex space-x-4 mt-6">
+                <button onclick="startGeneration()" class="w-full bg-blue-600 text-white p-3 rounded-md hover:bg-blue-700 transition">Start Real-Time Generation</button>
+                <button onclick="stopGeneration()" class="w-full bg-red-600 text-white p-3 rounded-md hover:bg-red-700 transition hidden" id="stopButton">Stop Real-Time Generation</button>
+                <button onclick="downloadDatasets()" class="w-full bg-green-600 text-white p-3 rounded-md hover:bg-green-700 transition hidden" id="downloadButton">Download Datasets</button>
+            </div>
+        </div>
+
+        <!-- Progress Indicator -->
+        <div id="progress" class="hidden text-center text-gray-600">
+            <p class="text-lg">Generating and cleaning datasets, please wait...</p>
+            <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+                <div class="bg-blue-600 h-2.5 rounded-full" style="width: 0%" id="progressBar"></div>
+            </div>
+            <p id="status" class="text-sm mt-2">Next generation and ETL in 5 seconds...</p>
+        </div>
+
+        <!-- Data Quality Metrics -->
+        <div id="dataQuality" class="hidden bg-white p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Data Quality Metrics</h2>
+            <p class="text-gray-600 mb-4">Quality metrics for the latest generated datasets, updated every 5 seconds after ETL. Download when metrics indicate high quality (e.g., Completeness > 95%, Duplicate % < 1%, Referential Integrity 100%).</p>
+            <div id="qualityTables" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+        </div>
+
+        <!-- Download Status Pop-up -->
+        <div id="downloadStatusPopup" class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center hidden" style="z-index: 1000;">
+            <div id="downloadPopupContent" class="bg-white rounded-lg p-6 w-11/12 max-w-md shadow-lg relative">
+                <div id="popupHeader" class="mb-4 bg-gray-100 p-2 rounded-t-lg">
+                    <h3 class="text-lg font-semibold text-gray-700">Download Status</h3>
+                </div>
+                <p id="downloadStatusMessage" class="text-gray-600 mb-4">Evaluating dataset quality...</p>
+                <div class="w-full bg-gray-200 rounded-full h-4 mb-4">
+                    <div id="downloadStatusBar" class="h-4 rounded-full" style="width: 0%"></div>
+                </div>
+                <div class="flex space-x-4">
+                    <button id="downloadNowButton" class="w-full bg-green-600 text-white p-2 rounded-md hover:bg-green-700 transition hidden" onclick="downloadDatasets()">Download Now</button>
+                    <button class="w-full bg-gray-600 text-white p-2 rounded-md hover:bg-gray-700 transition" onclick="closeDownloadStatusPopup()">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Modal (Non-blocking) -->
+        <div id="vizModal" class="fixed inset-0 flex items-center justify-center hidden" style="z-index: 2000; pointer-events: none;">
+            <div id="modalContent" class="bg-white rounded-lg w-11/12 max-w-6xl p-6 relative transition-all" style="position: absolute; pointer-events: auto;">
+                <div class="resize-handle left"></div>
+                <div class="resize-handle right"></div>
+                <div class="flex justify-between items-center mb-4 bg-gray-100 p-2 rounded-t-lg cursor-move" id="modalHeader">
+                    <h2 class="text-2xl font-semibold text-gray-700">Car Sales Dashboards</h2>
+                    <div class="space-x-2">
+                        <button onclick="minimizeModal()" id="minimizeBtn" class="text-gray-600 hover:text-gray-800" title="Minimize">−</button>
+                        <button onclick="toggleMaximizeModal()" id="maximizeBtn" class="text-gray-600 hover:text-gray-800" title="Maximize">□</button>
+                        <button onclick="closeModal()" class="text-gray-600 hover:text-gray-800" title="Close">×</button>
+                    </div>
+                </div>
+                <p class="text-gray-600 mb-4">Switch between dashboards to view KPIs and visualizations, updated every 5 seconds with cleaned data.</p>
+                <!-- Tabs -->
+                <div class="flex border-b border-gray-200 mb-6">
+                    <button class="tab-btn px-4 py-2 text-gray-600 hover:text-blue-600 border-b-2 border-transparent hover:border-blue-600" onclick="switchTab('executive')">Executive Overview</button>
+                    <button class="tab-btn px-4 py-2 text-gray-600 hover:text-blue-600 border-b-2 border-transparent hover:border-blue-600" onclick="switchTab('sales')">Sales Performance</button>
+                    <button class="tab-btn px-4 py-2 text-gray-600 hover:text-blue-600 border-b-2 border-transparent hover:border-blue-600" onclick="switchTab('marketing')">Marketing & Leads</button>
+                    <button class="tab-btn px-4 py-2 text-gray-600 hover:text-blue-600 border-b-2 border-transparent hover:border-blue-600" onclick="switchTab('team')">Sales Team</button>
+                    <button class="tab-btn px-4 py-2 text-gray-600 hover:text-blue-600 border-b-2 border-transparent hover:border-blue-600" onclick="switchTab('inventory')">Inventory & Supply</button>
+                    <button class="tab-btn px-4 py-2 text-gray-600 hover:text-blue-600 border-b-2 border-transparent hover:border-blue-600" onclick="switchTab('financial')">Financial</button>
+                    <button class="tab-btn px-4 py-2 text-gray-600 hover:text-blue-600 border-b-2 border-transparent hover:border-blue-600" onclick="switchTab('service')">After-Sales & Service</button>
+                </div>
+                <!-- Dashboard Containers -->
+                <div id="dashboardContainer">
+                    <!-- Executive Overview -->
+                    <div id="executive" class="dashboard grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hidden">
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Total Cars Sold</h3>
+                            <p id="executive-totalCarsSold" class="text-3xl font-bold text-blue-600 mt-2">0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Monthly Revenue</h3>
+                            <p id="executive-monthlyRevenue" class="text-3xl font-bold text-green-600 mt-2">$0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Sales Growth %</h3>
+                            <p id="executive-salesGrowth" class="text-3xl font-bold text-purple-600 mt-2">0%</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Profit Margin</h3>
+                            <p id="executive-profitMargin" class="text-3xl font-bold text-indigo-600 mt-2">0%</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Inventory Turnover</h3>
+                            <p id="executive-inventoryTurnover" class="text-3xl font-bold text-teal-600 mt-2">0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">CSAT Score</h3>
+                            <p id="executive-csatScore" class="text-3xl font-bold text-orange-600 mt-2">0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md lg:col-span-2">
+                            <h3 class="text-lg font-medium text-gray-700 mb-2">Top 5 Selling Models</h3>
+                            <canvas id="executive-topModelsChart"></canvas>
+                        </div>
+                    </div>
+                    <!-- Sales Performance -->
+                    <div id="sales" class="dashboard grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hidden">
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md">
+                            <h3 class="text-lg font-medium text-gray-700 mb-2">Sales by Model</h3>
+                            <canvas id="sales-modelChart"></canvas>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md">
+                            <h3 class="text-lg font-medium text-gray-700 mb-2">Sales by Type</h3>
+                            <canvas id="sales-typeChart"></canvas>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md">
+                            <h3 class="text-lg font-medium text-gray-700 mb-2">Sales by Region</h3>
+                            <canvas id="sales-regionChart"></canvas>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Revenue per Sale</h3>
+                            <p id="sales-revenuePerSale" class="text-3xl font-bold text-blue-600 mt-2">$0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md lg:col-span-2">
+                            <h3 class="text-lg font-medium text-gray-700 mb-2">Sales vs. Targets</h3>
+                            <canvas id="sales-targetChart"></canvas>
+                        </div>
+                    </div>
+                    <!-- Marketing & Lead Generation -->
+                    <div id="marketing" class="dashboard grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hidden">
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Lead Volume</h3>
+                            <p id="marketing-leadVolume" class="text-3xl font-bold text-blue-600 mt-2">0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md">
+                            <h3 class="text-lg font-medium text-gray-700 mb-2">Lead Sources</h3>
+                            <canvas id="marketing-leadSourceChart"></canvas>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Conversion Rate</h3>
+                            <p id="marketing-conversionRate" class="text-3xl font-bold text-green-600 mt-2">0%</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Cost per Lead</h3>
+                            <p id="marketing-costPerLead" class="text-3xl font-bold text-purple-600 mt-2">$0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md lg:col-span-2">
+                            <h3 class="text-lg font-medium text-gray-700 mb-2">Campaign Performance</h3>
+                            <canvas id="marketing-campaignChart"></canvas>
+                        </div>
+                    </div>
+                    <!-- Sales Team Performance -->
+                    <div id="team" class="dashboard grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hidden">
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Sales per Salesperson</h3>
+                            <p id="team-salesPerPerson" class="text-3xl font-bold text-blue-600 mt-2">0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Lead Follow-Up Rate</h3>
+                            <p id="team-followUpRate" class="text-3xl font-bold text-green-600 mt-2">0%</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Closing Ratio</h3>
+                            <p id="team-closingRatio" class="text-3xl font-bold text-purple-600 mt-2">0%</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md">
+                            <h3 class="text-lg font-medium text-gray-700 mb-2">Test Drives per Rep</h3>
+                            <canvas id="team-testDrivesChart"></canvas>
+                        </div>
+                    </div>
+                    <!-- Inventory & Supply Chain -->
+                    <div id="inventory" class="dashboard grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hidden">
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Inventory Levels</h3>
+                            <p id="inventory-totalStock" class="text-3xl font-bold text-blue-600 mt-2">0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md">
+                            <h3 class="text-lg font-medium text-gray-700 mb-2">Inventory by Model</h3>
+                            <canvas id="inventory-modelChart"></canvas>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Days to Sell</h3>
+                            <p id="inventory-daysToSell" class="text-3xl font-bold text-green-600 mt-2">0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Waitlisted Models</h3>
+                            <p id="inventory-waitlisted" class="text-3xl font-bold text-purple-600 mt-2">0</p>
+                        </div>
+                    </div>
+                    <!-- Financial Performance -->
+                    <div id="financial" class="dashboard grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hidden">
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Gross Profit per Vehicle</h3>
+                            <p id="financial-grossProfit" class="text-3xl font-bold text-blue-600 mt-2">$0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Monthly Revenue</h3>
+                            <p id="financial-monthlyRevenue" class="text-3xl font-bold text-green-600 mt-2">$0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Discounts Impact</h3>
+                            <p id="financial-discounts" class="text-3xl font-bold text-purple-600 mt-2">$0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md">
+                            <h3 class="text-lg font-medium text-gray-700 mb-2">Financing vs. Cash</h3>
+                            <canvas id="financial-paymentChart"></canvas>
+                        </div>
+                    </div>
+                    <!-- After-Sales & Service -->
+                    <div id="service" class="dashboard grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hidden">
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Service Visits</h3>
+                            <p id="service-visits" class="text-3xl font-bold text-blue-600 mt-2">0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Service Revenue</h3>
+                            <p id="service-revenue" class="text-3xl font-bold text-green-600 mt-2">$0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Warranty Claims</h3>
+                            <p id="service-warranty" class="text-3xl font-bold text-purple-600 mt-2">0</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Avg. Repair Time</h3>
+                            <p id="service-repairTime" class="text-3xl font-bold text-orange-600 mt-2">0 hrs</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-md text-center">
+                            <h3 class="text-lg font-medium text-gray-700">Service CSAT</h3>
+                            <p id="service-csat" class="text-3xl font-bold text-teal-600 mt-2">0</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex space-x-4 mt-6">
+                    <button onclick="downloadDashboardAsJPG()" class="w-full bg-purple-600 text-white p-3 rounded-md hover:bg-purple-700 transition">Download Dashboard as JPG</button>
+                    <button onclick="downloadDashboardAsExcel()" class="w-full bg-indigo-600 text-white p-3 rounded-md hover:bg-indigo-700 transition">Download KPI Data as Excel</button>
+                </div>
+                <p id="dashboardStatus" class="text-center text-gray-600 mt-4">Waiting for data...</p>
+            </div>
+            <div id="minimizedBar" class="hidden fixed bottom-0 left-0 w-full bg-gray-200 p-2 text-center">
+                <button onclick="restoreModal()" class="text-blue-600 hover:text-blue-800">Restore Dashboards</button>
+            </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">About the Dataset</h2>
+            <p class="text-gray-600">Datasets are generated and cleaned (ETL) every 5 seconds in memory. ETL includes data cleaning, validation, deduplication, and enrichment. A pop-up window shows when it's the best time to download based on data quality (e.g., Completeness > 95%, Duplicate % < 1%). Click 'Download Datasets' or use the pop-up's 'Download Now' button when prompted. Seven dashboards (Executive, Sales, Marketing, Team, Inventory, Financial, Service) appear in a draggable, resizable tabbed modal after the first generation, updating every 5 seconds, with options to minimize, maximize, or download as JPG/Excel. The dataset includes:</p>
+            <ul class="list-disc pl-6 mt-2 text-gray-600">
+                <li><strong>car_sale.csv</strong>: Combined dataset (40+ columns, enriched).</li>
+                <li><strong>car_inventory.csv</strong>: Car details (deduplicated).</li>
+                <li><strong>customer_profiles.csv</strong>: Customer demographics (enriched).</li>
+                <li><strong>sales_transactions.csv</strong>: Transaction details (validated).</li>
+                <li><strong>marketing_campaigns.csv</strong>: Campaign details (cleaned).</li>
+                <li><strong>payment_info.csv</strong>: Payment details (standardized).</li>
+            </ul>
+            <p class="text-gray-600 mt-4">CSVs are Excel-compatible with correlations (e.g., income vs. car price) and cleaned data. For 2TB datasets, use the Python script with similar ETL logic.</p>
+        </div>
+    </div>
+
+    <script>
+        let intervalId = null;
+        let latestDatasets = null;
+        let charts = {};
+        let isMaximized = false;
+        let activeTab = 'executive';
+
+        // Initialize dashboard charts
+        function initDashboard() {
+            charts['executive-topModels'] = new Chart(document.getElementById('executive-topModelsChart').getContext('2d'), {
+                type: 'bar',
+                data: { labels: [], datasets: [{ label: 'Sales Volume', data: [], backgroundColor: '#36A2EB' }] },
+                options: { indexAxis: 'y', scales: { x: { beginAtZero: true, title: { display: true, text: 'Number of Sales' } } }, plugins: { legend: { display: false } } }
+            });
+            charts['sales-model'] = new Chart(document.getElementById('sales-modelChart').getContext('2d'), {
+                type: 'bar',
+                data: { labels: [], datasets: [{ label: 'Sales', data: [], backgroundColor: '#4BC0C0' }] },
+                options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Sales' } } } }
+            });
+            charts['sales-type'] = new Chart(document.getElementById('sales-typeChart').getContext('2d'), {
+                type: 'pie',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: ['#FF6384', '#36A2EB'] }] },
+                options: { plugins: { legend: { position: 'bottom' } } }
+            });
+            charts['sales-region'] = new Chart(document.getElementById('sales-regionChart').getContext('2d'), {
+                type: 'bar',
+                data: { labels: [], datasets: [{ label: 'Sales', data: [], backgroundColor: '#9966FF' }] },
+                options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Sales' } } } }
+            });
+            charts['sales-target'] = new Chart(document.getElementById('sales-targetChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'Actual Sales', data: [], backgroundColor: '#36A2EB' },
+                        { label: 'Target Sales', data: [], backgroundColor: '#FF6384' }
+                    ]
+                },
+                options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Sales' } } } }
+            });
+            charts['marketing-leadSource'] = new Chart(document.getElementById('marketing-leadSourceChart').getContext('2d'), {
+                type: 'pie',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'] }] },
+                options: { plugins: { legend: { position: 'bottom' } } }
+            });
+            charts['marketing-campaign'] = new Chart(document.getElementById('marketing-campaignChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'CTR (%)', data: [], backgroundColor: '#4BC0C0' },
+                        { label: 'CPC ($)', data: [], backgroundColor: '#9966FF' }
+                    ]
+                },
+                options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Value' } } } }
+            });
+            charts['team-testDrives'] = new Chart(document.getElementById('team-testDrivesChart').getContext('2d'), {
+                type: 'bar',
+                data: { labels: [], datasets: [{ label: 'Test Drives', data: [], backgroundColor: '#36A2EB' }] },
+                options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Test Drives' } } } }
+            });
+            charts['inventory-model'] = new Chart(document.getElementById('inventory-modelChart').getContext('2d'), {
+                type: 'bar',
+                data: { labels: [], datasets: [{ label: 'Stock Level', data: [], backgroundColor: '#4BC0C0' }] },
+                options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Stock' } } } }
+            });
+            charts['financial-payment'] = new Chart(document.getElementById('financial-paymentChart').getContext('2d'), {
+                type: 'pie',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56'] }] },
+                options: { plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+
+        // Switch between dashboard tabs
+        function switchTab(tabId) {
+            activeTab = tabId;
+            document.querySelectorAll('.dashboard').forEach(d => d.classList.add('hidden'));
+            document.getElementById(tabId).classList.remove('hidden');
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('text-blue-600', 'border-blue-600');
+                btn.classList.add('text-gray-600', 'border-transparent');
+            });
+            document.querySelector(`button[onclick="switchTab('${tabId}')"]`).classList.add('text-blue-600', 'border-blue-600');
+            if (latestDatasets) {
+                updateDashboard(latestDatasets.carSales, latestDatasets.carInventory, latestDatasets.customerProfiles, latestDatasets.marketingCampaigns);
+            }
+        }
+
+        // Update dashboards with new data
+        function updateDashboard(carSales, carInventory, customerProfiles, marketingCampaigns) {
+            const status = document.getElementById('dashboardStatus');
+            if (!carSales || carSales.length === 0 || !carInventory || !customerProfiles || !marketingCampaigns) {
+                status.textContent = 'No data available.';
+                return;
+            }
+
+            // Executive Overview
+            if (activeTab === 'executive' || !activeTab) {
+                const totalCarsSold = carSales.length;
+                document.getElementById('executive-totalCarsSold').textContent = totalCarsSold.toLocaleString();
+                const latestMonth = '2025-05';
+                const monthlyRevenue = carSales.filter(row => row.Sale_Date && row.Sale_Date.startsWith(latestMonth)).reduce((sum, row) => sum + (row.Sale_Price || 0), 0);
+                document.getElementById('executive-monthlyRevenue').textContent = `$${monthlyRevenue.toLocaleString()}`;
+                const prevMonth = '2025-04';
+                const currentMonthSales = carSales.filter(row => row.Sale_Date && row.Sale_Date.startsWith(latestMonth)).length;
+                const prevMonthSales = carSales.filter(row => row.Sale_Date && row.Sale_Date.startsWith(prevMonth)).length;
+                const salesGrowth = prevMonthSales > 0 ? ((currentMonthSales - prevMonthSales) / prevMonthSales * 100).toFixed(1) : 0;
+                document.getElementById('executive-salesGrowth').textContent = `${salesGrowth}%`;
+                const profitMargins = carSales.map(row => row.Profit_Margin || 0);
+                const avgProfitMargin = profitMargins.length > 0 ? (profitMargins.reduce((sum, margin) => sum + (parseFloat(margin) || 0), 0) / profitMargins.length).toFixed(1) : 0;
+                document.getElementById('executive-profitMargin').textContent = `${avgProfitMargin}%`;
+                const avgStockLevel = carInventory.reduce((sum, car) => sum + (car.Stock_Level || 0), 0) / carInventory.length || 1;
+                const inventoryTurnover = (totalCarsSold / avgStockLevel).toFixed(2);
+                document.getElementById('executive-inventoryTurnover').textContent = inventoryTurnover;
+                const csatScores = carSales.map(row => row.CSAT_Score || 3);
+                const avgCsat = csatScores.length > 0 ? (csatScores.reduce((sum, score) => sum + score, 0) / csatScores.length).toFixed(1) : 0;
+                document.getElementById('executive-csatScore').textContent = avgCsat;
+                const modelCounts = {};
+                carSales.forEach(row => {
+                    const modelKey = `${row.Make || 'Unknown'} ${row.Model || 'Unknown'}`;
+                    modelCounts[modelKey] = (modelCounts[modelKey] || 0) + 1;
+                });
+                const topModels = Object.entries(modelCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+                charts['executive-topModels'].data.labels = topModels.map(([model]) => model);
+                charts['executive-topModels'].data.datasets[0].data = topModels.map(([, count]) => count);
+                charts['executive-topModels'].update();
+            }
+
+            // Sales Performance
+            if (activeTab === 'sales') {
+                const modelCounts = {};
+                carSales.forEach(row => {
+                    const modelKey = `${row.Make || 'Unknown'} ${row.Model || 'Unknown'}`;
+                    modelCounts[modelKey] = (modelCounts[modelKey] || 0) + 1;
+                });
+                const topModels = Object.entries(modelCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+                charts['sales-model'].data.labels = topModels.map(([model]) => model);
+                charts['sales-model'].data.datasets[0].data = topModels.map(([, count]) => count);
+                charts['sales-model'].update();
+                const typeCounts = { New: 0, Used: 0 };
+                carSales.forEach(row => typeCounts[row.New_Used || 'New']++);
+                charts['sales-type'].data.labels = Object.keys(typeCounts);
+                charts['sales-type'].data.datasets[0].data = Object.values(typeCounts);
+                charts['sales-type'].update();
+                const regionCounts = {};
+                carSales.forEach(row => {
+                    regionCounts[row.Region || 'Unknown'] = (regionCounts[row.Region || 'Unknown'] || 0) + 1;
+                });
+                charts['sales-region'].data.labels = Object.keys(regionCounts);
+                charts['sales-region'].data.datasets[0].data = Object.values(regionCounts);
+                charts['sales-region'].update();
+                const revenuePerSale = carSales.length > 0 ? (carSales.reduce((sum, row) => sum + (row.Sale_Price || 0), 0) / carSales.length).toFixed(0) : 0;
+                document.getElementById('sales-revenuePerSale').textContent = `$${revenuePerSale.toLocaleString()}`;
+                const targetData = topModels.map(([model]) => {
+                    const sales = modelCounts[model];
+                    const target = carSales.filter(row => `${row.Make || 'Unknown'} ${row.Model || 'Unknown'}` === model).reduce((sum, row) => sum + (row.Target_Sales || 0), 0) / (modelCounts[model] || 1);
+                    return { model, sales, target };
+                });
+                charts['sales-target'].data.labels = targetData.map(d => d.model);
+                charts['sales-target'].data.datasets[0].data = targetData.map(d => d.sales);
+                charts['sales-target'].data.datasets[1].data = targetData.map(d => d.target);
+                charts['sales-target'].update();
+            }
+
+            // Marketing & Lead Generation
+            if (activeTab === 'marketing') {
+                const leadVolume = customerProfiles.filter(row => row.Lead_Source).length;
+                document.getElementById('marketing-leadVolume').textContent = leadVolume.toLocaleString();
+                const leadSources = {};
+                customerProfiles.forEach(row => {
+                    if (row.Lead_Source) leadSources[row.Lead_Source] = (leadSources[row.Lead_Source] || 0) + 1;
+                });
+                charts['marketing-leadSource'].data.labels = Object.keys(leadSources);
+                charts['marketing-leadSource'].data.datasets[0].data = Object.values(leadSources);
+                charts['marketing-leadSource'].update();
+                const conversionRate = leadVolume > 0 ? (carSales.length / leadVolume * 100).toFixed(1) : 0;
+                document.getElementById('marketing-conversionRate').textContent = `${conversionRate}%`;
+                const costPerLead = leadVolume > 0 ? (marketingCampaigns.reduce((sum, row) => sum + (row.Budget || 0), 0) / leadVolume).toFixed(2) : 0;
+                document.getElementById('marketing-costPerLead').textContent = `$${costPerLead}`;
+                const campaignData = marketingCampaigns.slice(0, 5).map(row => ({
+                    name: row.Campaign_Name || 'Unknown',
+                    ctr: row.CTR || 0,
+                    cpc: row.CPC || 0
+                }));
+                charts['marketing-campaign'].data.labels = campaignData.map(d => d.name);
+                charts['marketing-campaign'].data.datasets[0].data = campaignData.map(d => d.ctr);
+                charts['marketing-campaign'].data.datasets[1].data = campaignData.map(d => d.cpc);
+                charts['marketing-campaign'].update();
+            }
+
+            // Sales Team Performance
+            if (activeTab === 'team') {
+                const salesByPerson = {};
+                carSales.forEach(row => {
+                    salesByPerson[row.Salesperson_ID || 'Unknown'] = (salesByPerson[row.Salesperson_ID || 'Unknown'] || 0) + 1;
+                });
+                const avgSalesPerPerson = Object.values(salesByPerson).length > 0 ? (Object.values(salesByPerson).reduce((sum, count) => sum + count, 0) / Object.values(salesByPerson).length).toFixed(1) : 0;
+                document.getElementById('team-salesPerPerson').textContent = avgSalesPerPerson;
+                const followUpRate = customerProfiles.filter(row => row.Lead_Source).length > 0 ? (carSales.filter(row => row.Test_Drives > 0).length / customerProfiles.filter(row => row.Lead_Source).length * 100).toFixed(1) : 0;
+                document.getElementById('team-followUpRate').textContent = `${followUpRate}%`;
+                const closingRatio = carSales.length > 0 ? (carSales.filter(row => row.Test_Drives > 0).length / carSales.length * 100).toFixed(1) : 0;
+                document.getElementById('team-closingRatio').textContent = `${closingRatio}%`;
+                const testDrivesByPerson = {};
+                carSales.forEach(row => {
+                    testDrivesByPerson[row.Salesperson_ID || 'Unknown'] = (testDrivesByPerson[row.Salesperson_ID || 'Unknown'] || 0) + (row.Test_Drives || 0);
+                });
+                const topReps = Object.entries(testDrivesByPerson).sort((a, b) => b[1] - a[1]).slice(0, 5);
+                charts['team-testDrives'].data.labels = topReps.map(([id]) => id);
+                charts['team-testDrives'].data.datasets[0].data = topReps.map(([, count]) => count);
+                charts['team-testDrives'].update();
+            }
+
+            // Inventory & Supply Chain
+            if (activeTab === 'inventory') {
+                const totalStock = carInventory.reduce((sum, car) => sum + (car.Stock_Level || 0), 0);
+                document.getElementById('inventory-totalStock').textContent = totalStock.toLocaleString();
+                const stockByModel = {};
+                carInventory.forEach(row => {
+                    const modelKey = `${row.Make || 'Unknown'} ${row.Model || 'Unknown'}`;
+                    stockByModel[modelKey] = (stockByModel[modelKey] || 0) + (row.Stock_Level || 0);
+                });
+                const topStock = Object.entries(stockByModel).sort((a, b) => b[1] - a[1]).slice(0, 5);
+                charts['inventory-model'].data.labels = topStock.map(([model]) => model);
+                charts['inventory-model'].data.datasets[0].data = topStock.map(([, stock]) => stock);
+                charts['inventory-model'].update();
+                const avgDaysToSell = carInventory.reduce((sum, car) => sum + (car.Days_In_Stock || 0), 0) / carInventory.length || 0;
+                document.getElementById('inventory-daysToSell').textContent = avgDaysToSell.toFixed(1);
+                const waitlisted = carInventory.filter(car => (car.Waitlist_Count || 0) > 0).length;
+                document.getElementById('inventory-waitlisted').textContent = waitlisted.toLocaleString();
+            }
+
+            // Financial Performance
+            if (activeTab === 'financial') {
+                const grossProfit = carSales.map(row => row.Profit_Margin ? (row.Sale_Price * parseFloat(row.Profit_Margin) / 100) : (row.Sale_Price - (row.Manufacturing_Cost || 0)));
+                const avgGrossProfit = grossProfit.length > 0 ? (grossProfit.reduce((sum, profit) => sum + (profit || 0), 0) / grossProfit.length).toFixed(0) : 0;
+                document.getElementById('financial-grossProfit').textContent = `$${avgGrossProfit.toLocaleString()}`;
+                const monthlyRevenue = carSales.filter(row => row.Sale_Date && row.Sale_Date.startsWith('2025-05')).reduce((sum, row) => sum + (row.Sale_Price || 0), 0);
+                document.getElementById('financial-monthlyRevenue').textContent = `$${monthlyRevenue.toLocaleString()}`;
+                const discountsImpact = carSales.reduce((sum, row) => sum + ((row.MSRP || 0) * (row.Discount || 0)), 0);
+                document.getElementById('financial-discounts').textContent = `$${discountsImpact.toLocaleString()}`;
+                const paymentCounts = {};
+                carSales.forEach(row => {
+                    paymentCounts[row.Payment_Type || 'Unknown'] = (paymentCounts[row.Payment_Type || 'Unknown'] || 0) + 1;
+                });
+                charts['financial-payment'].data.labels = Object.keys(paymentCounts);
+                charts['financial-payment'].data.datasets[0].data = Object.values(paymentCounts);
+                charts['financial-payment'].update();
+            }
+
+            // After-Sales & Service
+            if (activeTab === 'service') {
+                const serviceVisits = carSales.reduce((sum, row) => sum + (row.Service_Visits || 0), 0);
+                document.getElementById('service-visits').textContent = serviceVisits.toLocaleString();
+                const serviceRevenue = carSales.reduce((sum, row) => sum + (row.Service_Revenue || 0), 0);
+                document.getElementById('service-revenue').textContent = `$${serviceRevenue.toLocaleString()}`;
+                const warrantyClaims = carSales.reduce((sum, row) => sum + (row.Warranty_Claims || 0), 0);
+                document.getElementById('service-warranty').textContent = warrantyClaims.toLocaleString();
+                const avgRepairTime = carSales.reduce((sum, row) => sum + (row.Repair_Time_Hours || 0), 0) / carSales.length || 0;
+                document.getElementById('service-repairTime').textContent = `${avgRepairTime.toFixed(1)} hrs`;
+                const serviceCsat = carSales.map(row => row.CSAT_Score || 3);
+                const avgServiceCsat = serviceCsat.length > 0 ? (serviceCsat.reduce((sum, score) => sum + score, 0) / serviceCsat.length).toFixed(1) : 0;
+                document.getElementById('service-csat').textContent = avgServiceCsat;
+            }
+
+            status.textContent = `Dashboard updated at ${new Date().toLocaleTimeString()}. Next update in 5 seconds...`;
+        }
+
+        // Show dashboard modal
+        function showModal() {
+            document.getElementById('vizModal').classList.remove('hidden');
+            document.getElementById('modalContent').classList.remove('hidden');
+            document.getElementById('minimizedBar').classList.add('hidden');
+            if (!charts['executive-topModels']) {
+                initDashboard();
+            }
+            switchTab('executive');
+        }
+
+        // Close dashboard modal
+        function closeModal() {
+            document.getElementById('vizModal').classList.add('hidden');
+            document.getElementById('modalContent').classList.remove('hidden');
+            document.getElementById('minimizedBar').classList.add('hidden');
+            isMaximized = false;
+            document.getElementById('maximizeBtn').textContent = '□';
+        }
+
+        // Minimize modal
+        function minimizeModal() {
+            document.getElementById('modalContent').classList.add('hidden');
+            document.getElementById('minimizedBar').classList.remove('hidden');
+        }
+
+        // Restore modal from minimized state
+        function restoreModal() {
+            document.getElementById('modalContent').classList.remove('hidden');
+            document.getElementById('minimizedBar').classList.add('hidden');
+        }
+
+        // Toggle maximize/restore modal
+        function toggleMaximizeModal() {
+            const modalContent = document.getElementById('modalContent');
+            isMaximized = !isMaximized;
+            if (isMaximized) {
+                modalContent.classList.add('w-full', 'h-full', 'max-w-full', 'max-h-full');
+                modalContent.style.left = '0px';
+                modalContent.style.top = '0px';
+                modalContent.style.transform = 'none';
+                document.getElementById('maximizeBtn').textContent = '↙';
+            } else {
+                modalContent.classList.remove('w-full', 'h-full', 'max-w-full', 'max-h-full');
+                modalContent.style.width = '80%';
+                modalContent.style.left = '50%';
+                modalContent.style.top = '50%';
+                modalContent.style.transform = 'translate(-50%, -50%)';
+                document.getElementById('maximizeBtn').textContent = '□';
+            }
+        }
+
+        // Make modal draggable and resizable
+        function initDraggableModal() {
+            const modalContent = document.getElementById('modalContent');
+            const modalHeader = document.getElementById('modalHeader');
+            const leftHandle = document.querySelector('.resize-handle.left');
+            const rightHandle = document.querySelector('.resize-handle.right');
+            let isDragging = false;
+            let isResizing = false;
+            let currentX, currentY, initialX, initialY;
+            let resizeSide = null;
+
+            // Dragging
+            modalHeader.addEventListener('mousedown', (e) => {
+                if (isMaximized) return;
+                initialX = e.clientX - currentX;
+                initialY = e.clientY - currentY;
+                isDragging = true;
+                modalContent.style.transition = 'none';
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    e.preventDefault();
+                    let newX = e.clientX - initialX;
+                    let newY = e.clientY - initialY;
+                    const modalRect = modalContent.getBoundingClientRect();
+                    const maxX = window.innerWidth - modalRect.width;
+                    const maxY = window.innerHeight - modalRect.height;
+                    newX = Math.max(0, Math.min(newX, maxX));
+                    newY = Math.max(0, Math.min(newY, maxY));
+                    modalContent.style.left = `${newX}px`;
+                    modalContent.style.top = `${newY}px`;
+                    modalContent.style.transform = 'none';
+                    currentX = newX;
+                    currentY = newY;
+                } else if (isResizing) {
+                    e.preventDefault();
+                    const modalRect = modalContent.getBoundingClientRect();
+                    let newWidth, newLeft;
+                    if (resizeSide === 'left') {
+                        const deltaX = initialX - e.clientX;
+                        newWidth = modalRect.width + deltaX;
+                        newLeft = modalRect.left - deltaX;
+                    } else {
+                        const deltaX = e.clientX - initialX;
+                        newWidth = modalRect.width + deltaX;
+                        newLeft = modalRect.left;
+                    }
+                    newWidth = Math.max(300, Math.min(newWidth, window.innerWidth * 0.9));
+                    newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - newWidth));
+                    modalContent.style.width = `${newWidth}px`;
+                    modalContent.style.left = `${newLeft}px`;
+                    modalContent.style.transform = 'none';
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+                isResizing = false;
+                modalContent.style.transition = 'all 0.3s';
+            });
+
+            // Resizing
+            leftHandle.addEventListener('mousedown', (e) => {
+                if (isMaximized) return;
+                isResizing = true;
+                resizeSide = 'left';
+                initialX = e.clientX;
+                modalContent.style.transition = 'none';
+            });
+
+            rightHandle.addEventListener('mousedown', (e) => {
+                if (isMaximized) return;
+                isResizing = true;
+                resizeSide = 'right';
+                initialX = e.clientX;
+                modalContent.style.transition = 'none';
+            });
+
+            // Initialize position
+            modalContent.style.width = '80%';
+            modalContent.style.left = '50%';
+            modalContent.style.top = '50%';
+            modalContent.style.transform = 'translate(-50%, -50%)';
+            currentX = window.innerWidth / 2 - modalContent.offsetWidth / 2;
+            currentY = window.innerHeight / 2 - modalContent.offsetHeight / 2;
+        }
+
+        // Download dashboard as JPG
+        function downloadDashboardAsJPG() {
+            if (!document.getElementById(activeTab).classList.contains('hidden')) {
+                html2canvas(document.getElementById(activeTab)).then(canvas => {
+                    const link = document.createElement('a');
+                    link.href = canvas.toDataURL('image/jpeg');
+                    link.download = `${activeTab}_dashboard.jpg`;
+                    link.click();
+                });
+            } else {
+                alert('Dashboard not initialized. Ensure the dashboard is open.');
+            }
+        }
+
+        // Download KPI data as Excel
+        function downloadDashboardAsExcel() {
+            if (!latestDatasets || !latestDatasets.carSales || !latestDatasets.carInventory || !latestDatasets.customerProfiles || !latestDatasets.marketingCampaigns) {
+                alert('No data available. Start real-time generation first.');
+                return;
+            }
+            const carSales = latestDatasets.carSales;
+            const carInventory = latestDatasets.carInventory;
+            const customerProfiles = latestDatasets.customerProfiles;
+            const marketingCampaigns = latestDatasets.marketingCampaigns;
+            const wb = XLSX.utils.book_new();
+
+            if (activeTab === 'executive') {
+                const totalCarsSold = carSales.length;
+                const monthlyRevenue = carSales.filter(row => row.Sale_Date && row.Sale_Date.startsWith('2025-05')).reduce((sum, row) => sum + (row.Sale_Price || 0), 0);
+                const currentMonthSales = carSales.filter(row => row.Sale_Date && row.Sale_Date.startsWith('2025-05')).length;
+                const prevMonthSales = carSales.filter(row => row.Sale_Date && row.Sale_Date.startsWith('2025-04')).length;
+                const salesGrowth = prevMonthSales > 0 ? ((currentMonthSales - prevMonthSales) / prevMonthSales * 100).toFixed(1) : 0;
+                const profitMargins = carSales.map(row => parseFloat(row.Profit_Margin) || 0);
+                const avgProfitMargin = profitMargins.length > 0 ? (profitMargins.reduce((sum, margin) => sum + margin, 0) / profitMargins.length).toFixed(1) : 0;
+                const avgStockLevel = carInventory.reduce((sum, car) => sum + (car.Stock_Level || 0), 0) / carInventory.length || 1;
+                const inventoryTurnover = (totalCarsSold / avgStockLevel).toFixed(2);
+                const csatScores = carSales.map(row => row.CSAT_Score || 3);
+                const avgCsat = csatScores.length > 0 ? (csatScores.reduce((sum, score) => sum + score, 0) / csatScores.length).toFixed(1) : 0;
+                const modelCounts = {};
+                carSales.forEach(row => {
+                    const modelKey = `${row.Make || 'Unknown'} ${row.Model || 'Unknown'}`;
+                    modelCounts[modelKey] = (modelCounts[modelKey] || 0) + 1;
+                });
+                const topModelsData = Object.entries(modelCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([Model, Count]) => ({ Model, Count }));
+                const kpiSummary = [
+                    { KPI: 'Total Cars Sold', Value: totalCarsSold, Unit: 'Cars' },
+                    { KPI: 'Monthly Revenue', Value: monthlyRevenue, Unit: 'USD' },
+                    { KPI: 'Sales Growth', Value: salesGrowth, Unit: '%' },
+                    { KPI: 'Profit Margin', Value: avgProfitMargin, Unit: '%' },
+                    { KPI: 'Inventory Turnover', Value: inventoryTurnover, Unit: 'Ratio' },
+                    { KPI: 'CSAT Score', Value: avgCsat, Unit: 'Score (1-5)' }
+                ];
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kpiSummary), 'KPI Summary');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(topModelsData), 'Top 5 Models');
+            } else if (activeTab === 'sales') {
+                const revenuePerSale = carSales.length > 0 ? (carSales.reduce((sum, row) => sum + (row.Sale_Price || 0), 0) / carSales.length).toFixed(0) : 0;
+                const modelCounts = {};
+                carSales.forEach(row => {
+                    const modelKey = `${row.Make || 'Unknown'} ${row.Model || 'Unknown'}`;
+                    modelCounts[modelKey] = (modelCounts[modelKey] || 0) + 1;
+                });
+                const topModels = Object.entries(modelCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([Model, Sales]) => ({ Model, Sales }));
+                const typeCounts = { New: 0, Used: 0 };
+                carSales.forEach(row => typeCounts[row.New_Used || 'New']++);
+                const regionCounts = {};
+                carSales.forEach(row => {
+                    regionCounts[row.Region || 'Unknown'] = (regionCounts[row.Region || 'Unknown'] || 0) + 1;
+                });
+                const targetData = topModels.map(([Model]) => {
+                    const sales = modelCounts[Model];
+                    const target = carSales.filter(row => `${row.Make || 'Unknown'} ${row.Model || 'Unknown'}` === Model).reduce((sum, row) => sum + (row.Target_Sales || 0), 0) / (modelCounts[Model] || 1);
+                    return { Model, Sales: sales, Target: target };
+                });
+                const kpiSummary = [{ KPI: 'Revenue per Sale', Value: revenuePerSale, Unit: 'USD' }];
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kpiSummary), 'KPI Summary');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(topModels), 'Sales by Model');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.entries(typeCounts).map(([Type, Count]) => ({ Type, Count }))), 'Sales by Type');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.entries(regionCounts).map(([Region, Sales]) => ({ Region, Sales }))), 'Sales by Region');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(targetData), 'Sales vs Targets');
+            } else if (activeTab === 'marketing') {
+                const leadVolume = customerProfiles.filter(row => row.Lead_Source).length;
+                const conversionRate = leadVolume > 0 ? (carSales.length / leadVolume * 100).toFixed(1) : 0;
+                const costPerLead = leadVolume > 0 ? (marketingCampaigns.reduce((sum, row) => sum + (row.Budget || 0), 0) / leadVolume).toFixed(2) : 0;
+                const leadSources = {};
+                customerProfiles.forEach(row => {
+                    if (row.Lead_Source) leadSources[row.Lead_Source] = (leadSources[row.Lead_Source] || 0) + 1;
+                });
+                const campaignData = marketingCampaigns.slice(0, 5).map(row => ({
+                    Campaign: row.Campaign_Name || 'Unknown',
+                    CTR: row.CTR || 0,
+                    CPC: row.CPC || 0,
+                    Impressions: row.Impressions || 0
+                }));
+                const kpiSummary = [
+                    { KPI: 'Lead Volume', Value: leadVolume, Unit: 'Leads' },
+                    { KPI: 'Conversion Rate', Value: conversionRate, Unit: '%' },
+                    { KPI: 'Cost per Lead', Value: costPerLead, Unit: 'USD' }
+                ];
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kpiSummary), 'KPI Summary');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.entries(leadSources).map(([Source, Count]) => ({ Source, Count }))), 'Lead Sources');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(campaignData), 'Campaign Performance');
+            } else if (activeTab === 'team') {
+                const salesByPerson = {};
+                carSales.forEach(row => {
+                    salesByPerson[row.Salesperson_ID || 'Unknown'] = (salesByPerson[row.Salesperson_ID || 'Unknown'] || 0) + 1;
+                });
+                const avgSalesPerPerson = Object.values(salesByPerson).length > 0 ? (Object.values(salesByPerson).reduce((sum, count) => sum + count, 0) / Object.values(salesByPerson).length).toFixed(1) : 0;
+                const followUpRate = customerProfiles.filter(row => row.Lead_Source).length > 0 ? (carSales.filter(row => row.Test_Drives > 0).length / customerProfiles.filter(row => row.Lead_Source).length * 100).toFixed(1) : 0;
+                const closingRatio = carSales.length > 0 ? (carSales.filter(row => row.Test_Drives > 0).length / carSales.length * 100).toFixed(1) : 0;
+                const testDrivesByPerson = {};
+                carSales.forEach(row => {
+                    testDrivesByPerson[row.Salesperson_ID || 'Unknown'] = (testDrivesByPerson[row.Salesperson_ID || 'Unknown'] || 0) + (row.Test_Drives || 0);
+                });
+                const topReps = Object.entries(testDrivesByPerson).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([Salesperson_ID, Test_Drives]) => ({ Salesperson_ID, Test_Drives }));
+                const kpiSummary = [
+                    { KPI: 'Sales per Salesperson', Value: avgSalesPerPerson, Unit: 'Sales' },
+                    { KPI: 'Lead Follow-Up Rate', Value: followUpRate, Unit: '%' },
+                    { KPI: 'Closing Ratio', Value: closingRatio, Unit: '%' }
+                ];
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kpiSummary), 'KPI Summary');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(topReps), 'Test Drives per Rep');
+            } else if (activeTab === 'inventory') {
+                const totalStock = carInventory.reduce((sum, car) => sum + (car.Stock_Level || 0), 0);
+                const avgDaysToSell = carInventory.reduce((sum, car) => sum + (car.Days_In_Stock || 0), 0) / carInventory.length || 0;
+                const waitlisted = carInventory.filter(car => (car.Waitlist_Count || 0) > 0).length;
+                const stockByModel = {};
+                carInventory.forEach(row => {
+                    const modelKey = `${row.Make || 'Unknown'} ${row.Model || 'Unknown'}`;
+                    stockByModel[modelKey] = (stockByModel[modelKey] || 0) + (car.Stock_Level || 0);
+                });
+                const topStock = Object.entries(stockByModel).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([Model, Stock]) => ({ Model, Stock }));
+                const kpiSummary = [
+                    { KPI: 'Total Stock', Value: totalStock, Unit: 'Vehicles' },
+                    { KPI: 'Days to Sell', Value: avgDaysToSell.toFixed(1), Unit: 'Days' },
+                    { KPI: 'Waitlisted Models', Value: waitlisted, Unit: 'Models' }
+                ];
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kpiSummary), 'KPI Summary');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(topStock), 'Inventory by Model');
+            } else if (activeTab === 'financial') {
+                const grossProfit = carSales.map(row => row.Profit_Margin ? (row.Sale_Price * parseFloat(row.Profit_Margin) / 100) : (row.Sale_Price - (row.Manufacturing_Cost || 0)));
+                const avgGrossProfit = grossProfit.length > 0 ? (grossProfit.reduce((sum, profit) => sum + (profit || 0), 0) / grossProfit.length).toFixed(0) : 0;
+                const monthlyRevenue = carSales.filter(row => row.Sale_Date && row.Sale_Date.startsWith('2025-05')).reduce((sum, row) => sum + (row.Sale_Price || 0), 0);
+                const discountsImpact = carSales.reduce((sum, row) => sum + ((row.MSRP || 0) * (row.Discount || 0)), 0);
+                const paymentCounts = {};
+                carSales.forEach(row => {
+                    paymentCounts[row.Payment_Type || 'Unknown'] = (paymentCounts[row.Payment_Type || 'Unknown'] || 0) + 1;
+                });
+                const kpiSummary = [
+                    { KPI: 'Gross Profit per Vehicle', Value: avgGrossProfit, Unit: 'USD' },
+                    { KPI: 'Monthly Revenue', Value: monthlyRevenue, Unit: 'USD' },
+                    { KPI: 'Discounts Impact', Value: discountsImpact, Unit: 'USD' }
+                ];
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kpiSummary), 'KPI Summary');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.entries(paymentCounts).map(([Type, Count]) => ({ Type, Count }))), 'Payment Types');
+            } else if (activeTab === 'service') {
+                const serviceVisits = carSales.reduce((sum, row) => sum + (row.Service_Visits || 0), 0);
+                const serviceRevenue = carSales.reduce((sum, row) => sum + (row.Service_Revenue || 0), 0);
+                const warrantyClaims = carSales.reduce((sum, row) => sum + (row.Warranty_Claims || 0), 0);
+                const avgRepairTime = carSales.reduce((sum, row) => sum + (row.Repair_Time_Hours || 0), 0) / carSales.length || 0;
+                const serviceCsat = carSales.map(row => row.CSAT_Score || 3);
+                const avgServiceCsat = serviceCsat.length > 0 ? (serviceCsat.reduce((sum, score) => sum + score, 0) / serviceCsat.length).toFixed(1) : 0;
+                const kpiSummary = [
+                    { KPI: 'Service Visits', Value: serviceVisits, Unit: 'Visits' },
+                    { KPI: 'Service Revenue', Value: serviceRevenue, Unit: 'USD' },
+                    { KPI: 'Warranty Claims', Value: warrantyClaims, Unit: 'Claims' },
+                    { KPI: 'Avg Repair Time', Value: avgRepairTime.toFixed(1), Unit: 'Hours' },
+                    { KPI: 'Service CSAT', Value: avgServiceCsat, Unit: 'Score (1-5)' }
+                ];
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kpiSummary), 'KPI Summary');
+            }
+
+            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([wbout], { type: 'application/octet-stream' });
+            saveAs(blob, `${activeTab}_kpis.xlsx`);
+        }
+
+        // Helper function to generate random integers
+        function randomInt(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        // Helper function to generate random float
+        function randomFloat(min, max, decimals = 2) {
+            return parseFloat((Math.random() * (max - min) + min).toFixed(decimals));
+        }
+
+        // Helper function to pick random element from array
+        function randomChoice(array) {
+            return array[Math.floor(Math.random() * array.length)];
+        }
+
+        // Helper function to generate dates
+        function randomDate(start, end) {
+            const date = new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
+            return date.toISOString().split('T')[0];
+        }
+
+        // Helper function to validate date format (YYYY-MM-DD)
+        function isValidDate(dateStr) {
+            if (!dateStr) return false;
+            const regex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!regex.test(dateStr)) return false;
+            const date = new Date(dateStr);
+            return date instanceof Date && !isNaN(date);
+        }
+
+        // Helper function to generate CSV content in chunks
+        function generateCSV(data, headers, chunkSize = 10000) {
+            const rows = [headers.join(',')];
+            for (let i = 0; i < data.length; i += chunkSize) {
+                const chunk = data.slice(i, i + chunkSize);
+                chunk.forEach(row => {
+                    const values = headers.map(header => {
+                        let value = row[header] ?? '';
+                        if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+                            value = `"${value.replace(/"/g, '""')}"`;
+                        }
+                        return value;
+                    });
+                    rows.push(values.join(','));
+                });
+            }
+            return rows.join('\n');
+        }
+
+        // Helper function to save CSV file
+        function saveCSV(content, filename) {
+            const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+            saveAs(blob, filename);
+        }
+
+        // Calculate IQR-based outliers
+        function detectOutliers(values) {
+            if (values.length === 0) return 0;
+            const sorted = values.slice().sort((a, b) => a - b);
+            const q1 = sorted[Math.floor(sorted.length * 0.25)];
+            const q3 = sorted[Math.floor(sorted.length * 0.75)];
+            const iqr = q3 - q1;
+            const lowerBound = q1 - 1.5 * iqr;
+            const upperBound = q3 + 1.5 * iqr;
+            return values.filter(v => v < lowerBound || v > upperBound).length;
+        }
+
+        // Calculate data quality metrics
+        function calculateDataQuality(datasets) {
+            const { carSales, carInventory, customerProfiles, marketingCampaigns, paymentInfo, transactions } = datasets;
+            const qualityMetrics = {};
+
+            // Helper to calculate completeness
+            function calculateCompleteness(data, keyColumns) {
+                if (data.length === 0) return 0;
+                let totalNonNull = 0;
+                let totalValues = data.length * keyColumns.length;
+                data.forEach(row => {
+                    keyColumns.forEach(col => {
+                        if (row[col] !== null && row[col] !== undefined && row[col] !== '') {
+                            totalNonNull++;
+                        }
+                    });
+                });
+                return ((totalNonNull / totalValues) * 100).toFixed(1);
+            }
+
+            // Helper to calculate uniqueness
+            function calculateUniqueness(data, pk) {
+                if (data.length === 0) return { uniquePKRatio: 0, duplicateRowPercent: 0 };
+                const pkSet = new Set(data.map(row => row[pk]));
+                const uniquePKRatio = ((pkSet.size / data.length) * 100).toFixed(1);
+                const rowStrings = data.map(row => JSON.stringify(row));
+                const uniqueRows = new Set(rowStrings).size;
+                const duplicateRowPercent = ((data.length - uniqueRows) / data.length * 100).toFixed(1);
+                return { uniquePKRatio, duplicateRowPercent };
+            }
+
+            // Helper to calculate format consistency
+            function calculateFormatConsistency(data, formatRules) {
+                if (data.length === 0) return 0;
+                let validCount = 0;
+                let totalCount = 0;
+                data.forEach(row => {
+                    formatRules.forEach(({ field, validator }) => {
+                        totalCount++;
+                        if (row[field] && validator(row[field])) {
+                            validCount++;
+                        }
+                    });
+                });
+                return totalCount > 0 ? ((validCount / totalCount) * 100).toFixed(1) : 0;
+            }
+
+            // Helper to calculate validity
+            function calculateInvalidEntries(data, validityRules) {
+                if (data.length === 0) return 0;
+                let invalidCount = 0;
+                let totalCount = 0;
+                data.forEach(row => {
+                    validityRules.forEach(({ field, validator }) => {
+                        totalCount++;
+                        if (row[field] !== null && row[field] !== undefined && !validator(row[field])) {
+                            invalidCount++;
+                        }
+                    });
+                });
+                return totalCount > 0 ? ((invalidCount / totalCount) * 100).toFixed(1) : 0;
+            }
+
+            // Helper to calculate outliers
+            function calculateOutlierRatio(data, numericFields) {
+                if (data.length === 0) return 0;
+                let totalOutliers = 0;
+                let totalValues = 0;
+                numericFields.forEach(field => {
+                    const values = data.map(row => Number(row[field])).filter(v => !isNaN(v));
+                    totalValues += values.length;
+                    totalOutliers += detectOutliers(values);
+                });
+                return totalValues > 0 ? ((totalOutliers / totalValues) * 100).toFixed(1) : 0;
+            }
+
+            // Helper to calculate referential integrity
+            function calculateReferentialIntegrity(data, fkRules) {
+                if (data.length === 0) return 100;
+                let validCount = 0;
+                let totalCount = 0;
+                data.forEach(row => {
+                    fkRules.forEach(({ fk, refTable, refKey }) => {
+                        totalCount++;
+                        const fkValue = row[fk];
+                        if (fkValue && refTable.some(refRow => refRow[refKey] === fkValue)) {
+                            validCount++;
+                        }
+                    });
+                });
+                return totalCount > 0 ? ((validCount / totalCount) * 100).toFixed(1) : 100;
+            }
+
+            // Helper to calculate freshness
+            function calculateFreshness(data, dateField) {
+                if (data.length === 0 || !dateField) return 'N/A';
+                const latestDate = data.reduce((max, row) => {
+                    const date = row[dateField] ? new Date(row[dateField]) : new Date(0);
+                    return date > max ? date : max;
+                }, new Date(0));
+                const today = new Date('2025-05-25');
+                const diffTime = today - latestDate;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays >= 0 ? `${diffDays} days` : '0 days';
+            }
+
+            // Car Sales Quality Metrics
+            qualityMetrics.carSales = {
+                completeness: calculateCompleteness(carSales, ['Transaction_ID', 'Car_ID', 'Customer_ID', 'Sale_Price', 'Sale_Date']),
+                uniqueness: calculateUniqueness(carSales, 'Transaction_ID'),
+                formatConsistency: calculateFormatConsistency(carSales, [
+                    { field: 'Sale_Date', validator: isValidDate },
+                    { field: 'Payment_Type', validator: v => ['Loan', 'Lease', 'Cash'].includes(v) || !v }
+                ]),
+                invalidEntries: calculateInvalidEntries(carSales, [
+                    { field: 'Sale_Price', validator: v => Number(v) >= 5000 || v === null },
+                    { field: 'Age', validator: v => Number(v) >= 18 && Number(v) <= 100 || v === null }
+                ]),
+                outlierRatio: calculateOutlierRatio(carSales, ['Sale_Price', 'Income']),
+                referentialIntegrity: calculateReferentialIntegrity(carSales, [
+                    { fk: 'Car_ID', refTable: carInventory, refKey: 'Car_ID' },
+                    { fk: 'Customer_ID', refTable: customerProfiles, refKey: 'Customer_ID' },
+                    { fk: 'Campaign_ID', refTable: marketingCampaigns, refKey: 'Campaign_ID' }
+                ]),
+                freshness: calculateFreshness(carSales, 'Sale_Date')
+            };
+
+            // Car Inventory Quality Metrics
+            qualityMetrics.carInventory = {
+                completeness: calculateCompleteness(carInventory, ['Car_ID', 'Make', 'Model', 'MSRP', 'Stock_Level']),
+                uniqueness: calculateUniqueness(carInventory, 'Car_ID'),
+                formatConsistency: calculateFormatConsistency(carInventory, [
+                    { field: 'Fuel_Type', validator: v => ['Gasoline', 'Hybrid', 'Electric', 'Diesel'].includes(v) || !v },
+                    { field: 'Last_Updated', validator: isValidDate }
+                ]),
+                invalidEntries: calculateInvalidEntries(carInventory, [
+                    { field: 'MSRP', validator: v => Number(v) >= 10000 || v === null },
+                    { field: 'Stock_Level', validator: v => Number(v) >= 0 || v === null }
+                ]),
+                outlierRatio: calculateOutlierRatio(carInventory, ['MSRP', 'Stock_Level']),
+                referentialIntegrity: 100, // No foreign keys
+                freshness: calculateFreshness(carInventory, 'Last_Updated')
+            };
+
+            // Customer Profiles Quality Metrics
+            qualityMetrics.customerProfiles = {
+                completeness: calculateCompleteness(customerProfiles, ['Customer_ID', 'Age', 'Income', 'Region']),
+                uniqueness: calculateUniqueness(customerProfiles, 'Customer_ID'),
+                formatConsistency: calculateFormatConsistency(customerProfiles, [
+                    { field: 'Lead_Date', validator: isValidDate },
+                    { field: 'Loyalty_Tier', validator: v => ['Standard', 'Gold', 'Platinum'].includes(v) || !v }
+                ]),
+                invalidEntries: calculateInvalidEntries(customerProfiles, [
+                    { field: 'Age', validator: v => Number(v) >= 18 && Number(v) <= 100 || v === null },
+                    { field: 'Income', validator: v => Number(v) >= 20000 || v === null }
+                ]),
+                outlierRatio: calculateOutlierRatio(customerProfiles, ['Income', 'Credit_Score']),
+                referentialIntegrity: 100, // No foreign keys
+                freshness: calculateFreshness(customerProfiles, 'Lead_Date')
+            };
+
+            // Marketing Campaigns Quality Metrics
+            qualityMetrics.marketingCampaigns = {
+                completeness: calculateCompleteness(marketingCampaigns, ['Campaign_ID', 'Campaign_Name', 'Budget', 'CTR']),
+                uniqueness: calculateUniqueness(marketingCampaigns, 'Campaign_ID'),
+                formatConsistency: calculateFormatConsistency(marketingCampaigns, [
+                    { field: 'Start_Date', validator: isValidDate },
+                    { field: 'Channel', validator: v => ['Email', 'Social Media', 'TV', 'Radio', 'Online Ads'].includes(v) || !v }
+                ]),
+                invalidEntries: calculateInvalidEntries(marketingCampaigns, [
+                    { field: 'Budget', validator: v => Number(v) >= 1000 || v === null },
+                    { field: 'CTR', validator: v => Number(v) >= 0 && Number(v) <= 10 || v === null }
+                ]),
+                outlierRatio: calculateOutlierRatio(marketingCampaigns, ['Budget', 'Impressions']),
+                referentialIntegrity: 100, // No foreign keys
+                freshness: calculateFreshness(marketingCampaigns, 'Start_Date')
+            };
+
+            // Payment Info Quality Metrics
+            qualityMetrics.paymentInfo = {
+                completeness: calculateCompleteness(paymentInfo, ['Transaction_ID', 'Payment_Type', 'Down_Payment']),
+                uniqueness: calculateUniqueness(paymentInfo, 'Transaction_ID'),
+                formatConsistency: calculateFormatConsistency(paymentInfo, [
+                    { field: 'Payment_Type', validator: v => ['Loan', 'Lease', 'Cash'].includes(v) || !v }
+                ]),
+                invalidEntries: calculateInvalidEntries(paymentInfo, [
+                    { field: 'Down_Payment', validator: v => Number(v) >= 0 || v === null },
+                    { field: 'Interest_Rate', validator: v => Number(v) >= 0 || v === null }
+                ]),
+                outlierRatio: calculateOutlierRatio(paymentInfo, ['Down_Payment', 'Monthly_EMI']),
+                referentialIntegrity: calculateReferentialIntegrity(paymentInfo, [
+                    { fk: 'Transaction_ID', refTable: transactions, refKey: 'Transaction_ID' }
+                ]),
+                freshness: calculateFreshness(transactions, 'Sale_Date')
+            };
+
+            // Transactions Quality Metrics
+            qualityMetrics.transactions = {
+                completeness: calculateCompleteness(transactions, ['Transaction_ID', 'Car_ID', 'Customer_ID', 'Sale_Price']),
+                uniqueness: calculateUniqueness(transactions, 'Transaction_ID'),
+                formatConsistency: calculateFormatConsistency(transactions, [
+                    { field: 'Sale_Date', validator: isValidDate }
+                ]),
+                invalidEntries: calculateInvalidEntries(transactions, [
+                    { field: 'Sale_Price', validator: v => Number(v) >= 5000 || v === null }
+                ]),
+                outlierRatio: calculateOutlierRatio(transactions, ['Sale_Price', 'Test_Drives']),
+                referentialIntegrity: calculateReferentialIntegrity(transactions, [
+                    { fk: 'Car_ID', refTable: carInventory, refKey: 'Car_ID' },
+                    { fk: 'Customer_ID', refTable: customerProfiles, refKey: 'Customer_ID' },
+                    { fk: 'Campaign_ID', refTable: marketingCampaigns, refKey: 'Campaign_ID' }
+                ]),
+                freshness: calculateFreshness(transactions, 'Sale_Date')
+            };
+
+            return qualityMetrics;
+        }
+
+        // Evaluate download readiness based on quality metrics
+        function evaluateDownloadReadiness(qualityMetrics) {
+            let isBest = true;
+            let isPoor = false;
+
+            Object.values(qualityMetrics).forEach(metrics => {
+                const completeness = parseFloat(metrics.completeness);
+                const uniquePKRatio = parseFloat(metrics.uniqueness.uniquePKRatio);
+                const duplicateRowPercent = parseFloat(metrics.uniqueness.duplicateRowPercent);
+                const formatConsistency = parseFloat(metrics.formatConsistency);
+                const invalidEntries = parseFloat(metrics.invalidEntries);
+                const outlierRatio = parseFloat(metrics.outlierRatio);
+                const referentialIntegrity = parseFloat(metrics.referentialIntegrity);
+
+                // Check for "Poor" condition
+                if (completeness <= 80 || referentialIntegrity < 90) {
+                    isPoor = true;
+                    isBest = false;
+                    return;
+                }
+
+                // Check if all "Best" criteria are met
+                if (
+                    completeness < 90 ||
+                    uniquePKRatio < 98 ||
+                    duplicateRowPercent >= 2 ||
+                    formatConsistency < 95 ||
+                    invalidEntries >= 3 ||
+                    outlierRatio >= 6 ||
+                    referentialIntegrity < 98
+                ) {
+                    isBest = false;
+                }
+            });
+
+            if (isPoor) {
+                return { status: 'poor', message: 'Wait! Do Not Download Now', barWidth: '20%', barColor: 'bg-red-600' };
+            } else if (isBest) {
+                return { status: 'best', message: "Download Now? It's the Best Time!", barWidth: '100%', barColor: 'bg-green-600' };
+            } else {
+                return { status: 'wait', message: 'Best to Wait for Better Quality', barWidth: '50%', barColor: 'bg-yellow-600' };
+            }
+        }
+
+        // Update download status pop-up
+        function updateDownloadStatus(qualityMetrics) {
+            const popup = document.getElementById('downloadStatusPopup');
+            const messageEl = document.getElementById('downloadStatusMessage');
+            const statusBar = document.getElementById('downloadStatusBar');
+            const downloadButton = document.getElementById('downloadNowButton');
+
+            const { status, message, barWidth, barColor } = evaluateDownloadReadiness(qualityMetrics);
+
+            messageEl.textContent = message;
+            statusBar.style.width = barWidth;
+            statusBar.className = `h-4 rounded-full ${barColor}`;
+
+            if (status === 'best') {
+                downloadButton.classList.remove('hidden');
+            } else {
+                downloadButton.classList.add('hidden');
+            }
+
+            if (popup.classList.contains('hidden')) {
+                popup.classList.remove('hidden');
+            }
+        }
+
+        // Close download status pop-up
+        function closeDownloadStatusPopup() {
+            document.getElementById('downloadStatusPopup').classList.add('hidden');
+        }
+
+        // Display data quality metrics
+        function displayDataQuality(qualityMetrics) {
+            const qualityTables = document.getElementById('qualityTables');
+            qualityTables.innerHTML = '';
+            const tableNames = {
+                carSales: 'Car Sales',
+                carInventory: 'Car Inventory',
+                customerProfiles: 'Customer Profiles',
+                marketingCampaigns: 'Marketing Campaigns',
+                paymentInfo: 'Payment Info',
+                transactions: 'Sales Transactions'
+            };
+
+            Object.entries(qualityMetrics).forEach(([dataset, metrics]) => {
+                const tableHtml = `
+                    <div class="bg-gray-50 p-4 rounded-lg shadow-md">
+                        <h3 class="text-lg font-medium text-gray-700 mb-2">${tableNames[dataset]}</h3>
+                        <table class="w-full text-sm text-left text-gray-600">
+                            <thead class="bg-gray-200">
+                                <tr>
+                                    <th class="px-4 py-2">Metric</th>
+                                    <th class="px-4 py-2">Value</th>
+                                    <th class="px-4 py-2">Ideal Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="px-4 py-2">Completeness</td>
+                                    <td class="px-4 py-2">${metrics.completeness}%</td>
+                                    <td class="px-4 py-2">> 90%</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-2">Unique PK Ratio</td>
+                                    <td class="px-4 py-2">${metrics.uniqueness.uniquePKRatio}%</td>
+                                    <td class="px-4 py-2">> 98%</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-2">Duplicate Row %</td>
+                                    <td class="px-4 py-2">${metrics.uniqueness.duplicateRowPercent}%</td>
+                                    <td class="px-4 py-2">< 2%</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-2">Format Consistency</td>
+                                    <td class="px-4 py-2">${metrics.formatConsistency}%</td>
+                                    <td class="px-4 py-2">> 95%</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-2">Invalid Entries</td>
+                                    <td class="px-4 py-2">${metrics.invalidEntries}%</td>
+                                    <td class="px-4 py-2">< 3%</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-2">Outlier Ratio</td>
+                                    <td class="px-4 py-2">${metrics.outlierRatio}%</td>
+                                    <td class="px-4 py-2">< 6%</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-2">Referential Integrity</td>
+                                    <td class="px-4 py-2">${metrics.referentialIntegrity}%</td>
+                                    <td class="px-4 py-2">> 98%</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-2">Last Record Age</td>
+                                    <td class="px-4 py-2">${metrics.freshness}</td>
+                                    <td class="px-4 py-2">< 30 days</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                qualityTables.innerHTML += tableHtml;
+            });
+
+            document.getElementById('dataQuality').classList.remove('hidden');
+            updateDownloadStatus(qualityMetrics);
+        }
+
+        // ETL process with data cleaning and enrichment
+        function performETL(datasets) {
+            const { carSales, carInventory, customerProfiles, marketingCampaigns, paymentInfo, transactions } = datasets;
+
+            // Clean carSales
+            const cleanedCarSales = carSales.filter(row => {
+                return row.Sale_Price >= 5000 &&
+                       row.MSRP >= 10000 &&
+                       (row.Age === null || (row.Age >= 18 && row.Age <= 100)) &&
+                       row.Income >= 20000 &&
+                       ['North', 'South', 'East', 'West', 'Central'].includes(row.Region) &&
+                       isValidDate(row.Sale_Date) &&
+                       row.Manufacturing_Cost > 0;
+            }).map(row => {
+                const salePrice = Number(row.Sale_Price) || 0;
+                const manufacturingCost = Number(row.Manufacturing_Cost) || row.MSRP * 0.7; // Fallback to 70% of MSRP
+                const profitMargin = salePrice > 0 && manufacturingCost > 0 ?
+                    ((salePrice - manufacturingCost) / salePrice * 100).toFixed(1) : '0.0';
+                return {
+                    ...row,
+                    Profit_Margin: profitMargin,
+                    Normalized_Sale_Price: row.MSRP > 0 ? (salePrice / row.MSRP).toFixed(2) : '0.00'
+                };
+            });
+
+            // Clean carInventory
+            const cleanedCarInventory = carInventory.filter(row => {
+                return row.MSRP >= 10000 &&
+                       row.Year >= 2018 && row.Year <= 2025 &&
+                       row.Stock_Level >= 0 &&
+                       ['Gasoline', 'Hybrid', 'Electric', 'Diesel'].includes(row.Fuel_Type) &&
+                       isValidDate(row.Last_Updated);
+            }).map(row => ({
+                ...row,
+                Normalized_MSRP: (row.MSRP / 100000).toFixed(2)
+            }));
+
+            // Clean customerProfiles
+            const cleanedCustomerProfiles = customerProfiles.filter(row => {
+                return (row.Age === null || (row.Age >= 18 && row.Age <= 100)) &&
+                       row.Income >= 20000 &&
+                       row.Credit_Score >= 300 && row.Credit_Score <= 850 &&
+                       isValidDate(row.Lead_Date);
+            }).map(row => ({
+                ...row,
+                Customer_Lifetime_Value: (row.Income * 0.1 + row.Credit_Score * 10).toFixed(0),
+                Normalized_Income: (row.Income / 100000).toFixed(2)
+            }));
+
+            // Clean marketingCampaigns
+            const cleanedMarketingCampaigns = marketingCampaigns.filter(row => {
+                return row.Budget >= 1000 &&
+                       (row.CTR === null || (row.CTR >= 0 && row.CTR <= 10)) &&
+                       isValidDate(row.Start_Date) &&
+                       isValidDate(row.End_Date);
+            }).map(row => ({
+                ...row,
+                ROI: ((row.Conversion_Rate * row.Impressions * 0.01) / row.Budget * 100).toFixed(1)
+            }));
+
+            // Clean paymentInfo
+            const cleanedPaymentInfo = paymentInfo.filter(row => {
+                return row.Down_Payment >= 0 &&
+                       row.Monthly_EMI >= 0 &&
+                       (row.Interest_Rate === null || row.Interest_Rate >= 0) &&
+                       ['Loan', 'Lease', 'Cash'].includes(row.Payment_Type);
+            });
+
+            // Clean transactions
+            const cleanedTransactions = transactions.filter(row => {
+                return row.Sale_Price >= 5000 &&
+                       isValidDate(row.Sale_Date) &&
+                       ['North', 'South', 'East', 'West', 'Central'].includes(row.Region);
+            });
+
+            return {
+                carSales: cleanedCarSales,
+                carInventory: cleanedCarInventory,
+                customerProfiles: cleanedCustomerProfiles,
+                marketingCampaigns: cleanedMarketingCampaigns,
+                paymentInfo: cleanedPaymentInfo,
+                transactions: cleanedTransactions
+            };
+        }
+
+        // Generate car inventory data with controlled quality issues
+        function generateCarInventory(numCars) {
+            const makes = ['Toyota', 'Honda', 'Ford', 'Chevrolet', 'BMW', 'Mercedes', 'Tesla', 'Hyundai', 'Volkswagen', 'Audi'];
+            const models = ['Camry', 'Civic', 'F-150', 'Silverado', '3 Series', 'C-Class', 'Model 3', 'Tucson', 'Jetta', 'A4'];
+            const bodyTypes = ['Sedan', 'SUV', 'Truck', 'Coupe', 'Hatchback'];
+            const engines = ['2.5L I4', '3.5L V6', '5.0L V8', 'Electric', '2.0L Turbo'];
+            const fuelTypes = ['Gasoline', 'Hybrid', 'Electric', 'Diesel'];
+            const colors = ['White', 'Black', 'Silver', 'Blue', 'Red'];
+            const regions = ['North', 'South', 'East', 'West', 'Central'];
+
+            const inventory = [];
+            const usedCarIds = new Set();
+            for (let i = 0; i < numCars; i++) {
+                const carId = `CAR${String(i + 1).padStart(12, '0')}`;
+                const msrp = randomInt(20000, 80000);
+                // Introduce quality issues (1-5% chance)
+                const hasMissingValue = Math.random() < 0.05; // 5% chance of missing value
+                const hasInvalidFuelType = Math.random() < 0.02; // 2% chance of invalid fuel type
+                const hasDuplicate = Math.random() < 0.01 && i > 0; // 1% chance of duplicate
+
+                let row;
+                if (hasDuplicate && usedCarIds.size > 0) {
+                    // Create a duplicate entry
+                    const prevCar = inventory[randomInt(0, inventory.length - 1)];
+                    row = { ...prevCar, Car_ID: carId }; // New ID but same data
+                } else {
+                    row = {
+                        Car_ID: carId,
+                        Make: hasMissingValue ? null : randomChoice(makes),
+                        Model: randomChoice(models),
+                        Year: randomInt(2018, 2025),
+                        Body_Type: randomChoice(bodyTypes),
+                        Engine: randomChoice(engines),
+                        Fuel_Type: hasInvalidFuelType ? 'Invalid' : randomChoice(fuelTypes),
+                        Color: randomChoice(colors),
+                        MSRP: msrp,
+                        Mileage_Rating: randomInt(15, 40),
+                        Inventory_Region: randomChoice(regions),
+                        Stock_Level: randomInt(0, 50),
+                        Manufacturing_Cost: Math.round(msrp * randomFloat(0.6, 0.8)),
+                        Days_In_Stock: randomInt(0, 180),
+                        Waitlist_Count: randomInt(0, 20),
+                        Last_Updated: randomDate(new Date('2025-04-25'), new Date('2025-05-25'))
+                    };
+                }
+                usedCarIds.add(carId);
+                inventory.push(row);
+            }
+            return inventory;
+        }
+
+        // Generate customer profiles data with controlled quality issues
+        function generateCustomerProfiles(numCustomers) {
+            const regions = ['North', 'South', 'East', 'West', 'Central'];
+            const leadSources = ['Website', 'Social Media', 'Referral', 'Walk-In', 'Advertisement'];
+            const loyaltyTiers = ['Standard', 'Gold', 'Platinum'];
+
+            const customers = [];
+            const usedCustomerIds = new Set();
+            for (let i = 0; i < numCustomers; i++) {
+                const customerId = `CUST${String(i + 1).padStart(12, '0')}`;
+                // Introduce quality issues (1-5% chance)
+                const hasMissingValue = Math.random() < 0.05; // 5% chance of missing value
+                const hasInvalidAge = Math.random() < 0.03; // 3% chance of invalid age
+                const hasDuplicate = Math.random() < 0.01 && i > 0; // 1% chance of duplicate
+
+                let row;
+                if (hasDuplicate && usedCustomerIds.size > 0) {
+                    const prevCustomer = customers[randomInt(0, customers.length - 1)];
+                    row = { ...prevCustomer, Customer_ID: customerId };
+                } else {
+                    const age = hasInvalidAge ? randomInt(5, 15) : randomInt(18, 80);
+                    const income = randomInt(30000, 150000);
+                    row = {
+                        Customer_ID: customerId,
+                        Age: hasMissingValue ? null : age,
+                        Gender: randomChoice(['Male', 'Female', 'Other']),
+                        Income: income,
+                        Region: randomChoice(regions),
+                        Lead_Source: randomChoice(leadSources),
+                        Loyalty_Tier: randomChoice(loyaltyTiers),
+                        Credit_Score: randomInt(500, 850),
+                        Last_Interaction: randomDate(new Date('2024-01-01'), new Date('2025-05-24')),
+                        Lead_Date: randomDate(new Date('2023-01-01'), new Date('2025-05-24'))
+                    };
+                }
+                usedCustomerIds.add(customerId);
+                customers.push(row);
+            }
+            return customers;
+        }
+
+        // Generate marketing campaigns data with controlled quality issues
+        function generateMarketingCampaigns(numCampaigns) {
+            const channels = ['Email', 'Social Media', 'TV', 'Radio', 'Online Ads'];
+            const campaigns = [];
+            const usedCampaignIds = new Set();
+            for (let i = 0; i < numCampaigns; i++) {
+                const campaignId = `CAMP${String(i + 1).padStart(12, '0')}`;
+                const startDate = randomDate(new Date('2023-01-01'), new Date('2025-05-24'));
+                const endDate = randomDate(new Date(startDate), new Date('2025-05-24'));
+                // Introduce quality issues (1-5% chance)
+                const hasMissingValue = Math.random() < 0.05; // 5% chance of missing value
+                const hasInvalidCTR = Math.random() < 0.02; // 2% chance of invalid CTR
+                const hasDuplicate = Math.random() < 0.01 && i > 0; // 1% chance of duplicate
+
+                let row;
+                if (hasDuplicate && usedCampaignIds.size > 0) {
+                    const prevCampaign = campaigns[randomInt(0, campaigns.length - 1)];
+                    row = { ...prevCampaign, Campaign_ID: campaignId };
+                } else {
+                    row = {
+                        Campaign_ID: campaignId,
+                        Campaign_Name: hasMissingValue ? null : `Campaign_${i + 1}`,
+                        Channel: randomChoice(channels),
+                        Budget: randomInt(1000, 50000),
+                        CTR: hasInvalidCTR ? randomFloat(-1, -0.1) : randomFloat(0.5, 5.0),
+                        CPC: randomFloat(0.5, 5.0),
+                        Impressions: randomInt(1000, 100000),
+                        Conversion_Rate: randomFloat(0.1, 10.0),
+                        Start_Date: startDate,
+                        End_Date: endDate
+                    };
+                }
+                usedCampaignIds.add(campaignId);
+                campaigns.push(row);
+            }
+            return campaigns;
+        }
+
+        // Generate payment info data with controlled quality issues
+        function generatePaymentInfo(numTransactions) {
+            const paymentTypes = ['Loan', 'Lease', 'Cash'];
+            const payments = [];
+            const usedTransactionIds = new Set();
+            for (let i = 0; i < numTransactions; i++) {
+                const transactionId = `TXN${String(i + 1).padStart(12, '0')}`;
+                // Introduce quality issues (1-5% chance)
+                const hasMissingValue = Math.random() < 0.05; // 5% chance of missing value
+                const hasInvalidInterestRate = Math.random() < 0.02; // 2% chance of invalid interest rate
+                const hasDuplicate = Math.random() < 0.01 && i > 0; // 1% chance of duplicate
+
+                let row;
+                if (hasDuplicate && usedTransactionIds.size > 0) {
+                    const prevPayment = payments[randomInt(0, payments.length - 1)];
+                    row = { ...prevPayment, Transaction_ID: transactionId };
+                } else {
+                    const paymentType = randomChoice(paymentTypes);
+                    const isCash = paymentType === 'Cash';
+                    row = {
+                        Transaction_ID: transactionId,
+                        Payment_Type: hasMissingValue ? null : paymentType,
+                        Down_Payment: isCash ? 0 : randomInt(1000, 10000),
+                        Monthly_EMI: isCash ? 0 : randomInt(300, 1500),
+                        Loan_Duration_Months: isCash ? 0 : randomInt(12, 60),
+                        Interest_Rate: isCash ? 0 : (hasInvalidInterestRate ? -1 : randomFloat(2.5, 7.5))
+                    };
+                }
+                usedTransactionIds.add(transactionId);
+                payments.push(row);
+            }
+            return payments;
+        }
+
+        // Generate sales transactions data with controlled quality issues
+        function generateSalesTransactions(numTransactions, carInventory, customerProfiles, marketingCampaigns) {
+            const promotionCodes = ['SAVE10', 'SUMMER20', 'FALL15', 'WINTER25', 'NONE'];
+            const salespersons = Array.from({ length: 50 }, (_, i) => `SP${String(i + 1).padStart(4, '0')}`);
+            const regions = ['North', 'South', 'East', 'West', 'Central'];
+            const transactions = [];
+            const usedTransactionIds = new Set();
+            for (let i = 0; i < numTransactions; i++) {
+                const transactionId = `TXN${String(i + 1).padStart(12, '0')}`;
+                // Introduce quality issues (1-5% chance)
+                const hasMissingValue = Math.random() < 0.05; // 5% chance of missing value
+                const hasInvalidSalePrice = Math.random() < 0.02; // 2% chance of invalid sale price
+                const hasDuplicate = Math.random() < 0.01 && i > 0; // 1% chance of duplicate
+
+                let row;
+                if (hasDuplicate && usedTransactionIds.size > 0) {
+                    const prevTransaction = transactions[randomInt(0, transactions.length - 1)];
+                    row = { ...prevTransaction, Transaction_ID: transactionId };
+                } else {
+                    const car = randomChoice(carInventory);
+                    const customer = randomChoice(customerProfiles);
+                    const campaign = randomChoice(marketingCampaigns);
+                    const salePrice = hasInvalidSalePrice ? randomInt(100, 4000) : Math.round(car.MSRP * randomFloat(0.8, 1.2));
+                    row = {
+                        Transaction_ID: transactionId,
+                        Car_ID: car.Car_ID,
+                        Customer_ID: customer.Customer_ID,
+                        Campaign_ID: campaign.Campaign_ID,
+                        Salesperson_ID: hasMissingValue ? null : randomChoice(salespersons),
+                        Sale_Price: salePrice,
+                        Sale_Date: randomDate(new Date('2024-01-01'), new Date('2025-05-24')),
+                        Region: randomChoice(regions),
+                        Promotion_Code: randomChoice(promotionCodes),
+                        Test_Drives: randomInt(0, 3),
+                        Target_Sales: randomInt(50, 200)
+                    };
+                }
+                usedTransactionIds.add(transactionId);
+                transactions.push(row);
+            }
+            return transactions;
+        }
+
+        // Generate combined car sales data
+        function generateCarSales(numTransactions, carInventory, customerProfiles, marketingCampaigns, paymentInfo, transactions) {
+            const sales = [];
+            const discountRates = [0, 0.05, 0.1, 0.15, 0.2];
+            for (let i = 0; i < numTransactions; i++) {
+                const txn = transactions[i];
+                const car = carInventory.find(c => c.Car_ID === txn.Car_ID);
+                const customer = customerProfiles.find(c => c.Customer_ID === txn.Customer_ID);
+                const campaign = marketingCampaigns.find(c => c.Campaign_ID === txn.Campaign_ID);
+                const payment = paymentInfo.find(p => p.Transaction_ID === txn.Transaction_ID);
+                if (!car || !customer || !campaign || !payment) continue;
+                const discount = randomChoice(discountRates);
+                const salePrice = Math.round(txn.Sale_Price * (1 - discount));
+                // Introduce quality issues (1-5% chance)
+                const hasMissingValue = Math.random() < 0.05; // 5% chance of missing value
+                sales.push({
+                    Transaction_ID: txn.Transaction_ID,
+                    Car_ID: car.Car_ID,
+                    Customer_ID: customer.Customer_ID,
+                    Campaign_ID: campaign.Campaign_ID,
+                    Salesperson_ID: txn.Salesperson_ID,
+                    Make: car.Make,
+                    Model: car.Model,
+                    Year: car.Year,
+                    Body_Type: car.Body_Type,
+                    Fuel_Type: car.Fuel_Type,
+                    Color: car.Color,
+                    MSRP: car.MSRP,
+                    Sale_Price: salePrice,
+                    Manufacturing_Cost: car.Manufacturing_Cost || Math.round(car.MSRP * randomFloat(0.6, 0.8)),
+                    Sale_Date: txn.Sale_Date,
+                    Region: txn.Region,
+                    Promotion_Code: txn.Promotion_Code,
+                    Discount: discount,
+                    New_Used: randomChoice(['New', 'Used']),
+                    Inventory_Region: car.Inventory_Region,
+                    Stock_Level: car.Stock_Level,
+                    Days_In_Stock: car.Days_In_Stock,
+                    Waitlist_Count: car.Waitlist_Count,
+                    Mileage_Rating: car.Mileage_Rating,
+                    Age: hasMissingValue ? null : customer.Age,
+                    Gender: customer.Gender,
+                    Income: customer.Income,
+                    Credit_Score: customer.Credit_Score,
+                    Lead_Source: customer.Lead_Source,
+                    Loyalty_Tier: customer.Loyalty_Tier,
+                    Last_Interaction: customer.Last_Interaction,
+                    Lead_Date: customer.Lead_Date,
+                    Payment_Type: payment.Payment_Type,
+                    Down_Payment: payment.Down_Payment,
+                    Monthly_EMI: payment.Monthly_EMI,
+                    Loan_Duration_Months: payment.Loan_Duration_Months,
+                    Interest_Rate: payment.Interest_Rate,
+                    Campaign_Name: campaign.Campaign_Name,
+                    Channel: campaign.Channel,
+                    Budget: campaign.Budget,
+                    CTR: campaign.CTR,
+                    CPC: campaign.CPC,
+                    Impressions: campaign.Impressions,
+                    Conversion_Rate: campaign.Conversion_Rate,
+                    Service_Visits: randomInt(0, 5),
+                    Service_Revenue: randomInt(0, 5000),
+                    Warranty_Claims: randomInt(0, 3),
+                    Repair_Time_Hours: randomFloat(0, 10),
+                    CSAT_Score: randomInt(1, 5),
+                    Test_Drives: txn.Test_Drives,
+                    Target_Sales: txn.Target_Sales
+                });
+            }
+            return sales;
+        }
+
+        // Start real-time dataset generation
+        function startGeneration() {
+            const numTransactions = Math.max(1000, Math.min(1000000, Number(document.getElementById('numTransactions').value) || 1000));
+            const numCars = Math.max(200, Math.min(100000, Number(document.getElementById('numCars').value) || 200));
+            const numCustomers = Math.max(800, Math.min(1000000, Number(document.getElementById('numCustomers').value) || 800));
+            const numCampaigns = Math.max(50, Math.min(10000, Number(document.getElementById('numCampaigns').value) || 50));
+
+            document.getElementById('datasetForm').querySelectorAll('input').forEach(input => input.disabled = true);
+            document.getElementById('progress').classList.remove('hidden');
+            document.getElementById('stopButton').classList.remove('hidden');
+            document.getElementById('downloadButton').classList.add('hidden');
+
+            let progress = 0;
+            const progressBar = document.getElementById('progressBar');
+            const status = document.getElementById('status');
+
+            function generateAndUpdate() {
+                status.textContent = 'Generating datasets...';
+                progress = 0;
+                progressBar.style.width = '0%';
+
+                // Generate datasets with quality variations
+                const carInventory = generateCarInventory(numCars);
+                progress += 20;
+                progressBar.style.width = `${progress}%`;
+
+                const customerProfiles = generateCustomerProfiles(numCustomers);
+                progress += 20;
+                progressBar.style.width = `${progress}%`;
+
+                const marketingCampaigns = generateMarketingCampaigns(numCampaigns);
+                progress += 20;
+                progressBar.style.width = `${progress}%`;
+
+                const paymentInfo = generatePaymentInfo(numTransactions);
+                progress += 20;
+                progressBar.style.width = `${progress}%`;
+
+                const transactions = generateSalesTransactions(numTransactions, carInventory, customerProfiles, marketingCampaigns);
+                progress += 10;
+                progressBar.style.width = `${progress}%`;
+
+                const carSales = generateCarSales(numTransactions, carInventory, customerProfiles, marketingCampaigns, paymentInfo, transactions);
+                progress += 10;
+                progressBar.style.width = `${progress}%`;
+
+                // Perform ETL
+                status.textContent = 'Cleaning and enriching data (ETL)...';
+                const cleanedDatasets = performETL({
+                    carSales,
+                    carInventory,
+                    customerProfiles,
+                    marketingCampaigns,
+                    paymentInfo,
+                    transactions
+                });
+
+                // Calculate and display data quality metrics
+                status.textContent = 'Calculating data quality metrics...';
+                const qualityMetrics = calculateDataQuality(cleanedDatasets);
+                displayDataQuality(qualityMetrics);
+
+                // Store latest datasets
+                latestDatasets = cleanedDatasets;
+                document.getElementById('downloadButton').classList.remove('hidden');
+
+                // Update dashboards
+                status.textContent = 'Updating dashboards...';
+                if (document.getElementById('vizModal').classList.contains('hidden')) {
+                    showModal();
+                }
+                updateDashboard(cleanedDatasets.carSales, cleanedDatasets.carInventory, cleanedDatasets.customerProfiles, cleanedDatasets.marketingCampaigns);
+
+                status.textContent = `Next generation, ETL, and quality check in 5 seconds... (Generated ${numTransactions} transactions, ${numCars} cars, ${numCustomers} customers, ${numCampaigns} campaigns)`;
+            }
+
+            // Run immediately and then every 5 seconds
+            generateAndUpdate();
+            intervalId = setInterval(generateAndUpdate, 5000);
+        }
+
+        // Stop real-time generation
+        function stopGeneration() {
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+            document.getElementById('datasetForm').querySelectorAll('input').forEach(input => input.disabled = false);
+            document.getElementById('progress').classList.add('hidden');
+            document.getElementById('stopButton').classList.add('hidden');
+            document.getElementById('status').textContent = 'Generation stopped. Download datasets or start again.';
+            closeDownloadStatusPopup();
+        }
+
+        // Download all datasets as CSVs
+        function downloadDatasets() {
+            if (!latestDatasets) {
+                alert('No datasets available. Start real-time generation first.');
+                return;
+            }
+
+            const { carSales, carInventory, customerProfiles, marketingCampaigns, paymentInfo, transactions } = latestDatasets;
+
+            // Define headers for each dataset
+            const carSalesHeaders = [
+                'Transaction_ID', 'Car_ID', 'Customer_ID', 'Campaign_ID', 'Salesperson_ID', 'Make', 'Model', 'Year',
+                'Body_Type', 'Fuel_Type', 'Color', 'MSRP', 'Sale_Price', 'Manufacturing_Cost', 'Sale_Date', 'Region',
+                'Promotion_Code', 'Discount', 'New_Used', 'Inventory_Region', 'Stock_Level', 'Days_In_Stock', 'Waitlist_Count',
+                'Mileage_Rating', 'Age', 'Gender', 'Income', 'Credit_Score', 'Lead_Source', 'Loyalty_Tier', 'Last_Interaction',
+                'Lead_Date', 'Payment_Type', 'Down_Payment', 'Monthly_EMI', 'Loan_Duration_Months', 'Interest_Rate',
+                'Campaign_Name', 'Channel', 'Budget', 'CTR', 'CPC', 'Impressions', 'Conversion_Rate', 'Service_Visits',
+                'Service_Revenue', 'Warranty_Claims', 'Repair_Time_Hours', 'CSAT_Score', 'Test_Drives', 'Target_Sales',
+                'Profit_Margin', 'Normalized_Sale_Price'
+            ];
+            const carInventoryHeaders = [
+                'Car_ID', 'Make', 'Model', 'Year', 'Body_Type', 'Engine', 'Fuel_Type', 'Color', 'MSRP', 'Mileage_Rating',
+                'Inventory_Region', 'Stock_Level', 'Manufacturing_Cost', 'Days_In_Stock', 'Waitlist_Count', 'Last_Updated',
+                'Normalized_MSRP'
+            ];
+            const customerProfilesHeaders = [
+                'Customer_ID', 'Age', 'Gender', 'Income', 'Region', 'Lead_Source', 'Loyalty_Tier', 'Credit_Score',
+                'Last_Interaction', 'Lead_Date', 'Customer_Lifetime_Value', 'Normalized_Income'
+            ];
+            const marketingCampaignsHeaders = [
+                'Campaign_ID', 'Campaign_Name', 'Channel', 'Budget', 'CTR', 'CPC', 'Impressions', 'Conversion_Rate',
+                'Start_Date', 'End_Date', 'ROI'
+            ];
+            const paymentInfoHeaders = [
+                'Transaction_ID', 'Payment_Type', 'Down_Payment', 'Monthly_EMI', 'Loan_Duration_Months', 'Interest_Rate'
+            ];
+            const transactionsHeaders = [
+                'Transaction_ID', 'Car_ID', 'Customer_ID', 'Campaign_ID', 'Salesperson_ID', 'Sale_Price', 'Sale_Date',
+                'Region', 'Promotion_Code', 'Test_Drives', 'Target_Sales'
+            ];
+
+            // Generate and save CSVs
+            saveCSV(generateCSV(carSales, carSalesHeaders), 'car_sale.csv');
+            saveCSV(generateCSV(carInventory, carInventoryHeaders), 'car_inventory.csv');
+            saveCSV(generateCSV(customerProfiles, customerProfilesHeaders), 'customer_profiles.csv');
+            saveCSV(generateCSV(marketingCampaigns, marketingCampaignsHeaders), 'marketing_campaigns.csv');
+            saveCSV(generateCSV(paymentInfo, paymentInfoHeaders), 'payment_info.csv');
+            saveCSV(generateCSV(transactions, transactionsHeaders), 'sales_transactions.csv');
+        }
+
+        // Initialize draggable modal on page load
+        window.onload = initDraggableModal;
+    </script>
+</body>
+</html>
