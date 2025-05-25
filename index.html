@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Choose your data science and tech specialization at SkyLimit TechHub Academy.">
+  <title>SkyLimit TechHub Academy</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <!-- Firebase SDK v10.12.2 (Modular) -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+    import { getFirestore, doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+    window.firebase = { initializeApp, auth: { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged }, firestore: { getFirestore, doc, getDoc, setDoc } };
+  </script>
+  <style>
+    .window {
+      aspect-ratio: 16 / 9;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      background-color: #f3f4f6;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      position: relative;
+    }
+    .window:hover {
+      background-color: #e5e7eb;
+    }
+    .more-info {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .dark-mode {
+      background-color: #1a202c;
+      color: #e2e8f0;
+    }
+    .dark-mode .bg-gray-100 {
+      background-color: #1a202c;
+    }
+    .dark-mode .window {
+      background-color: #2d3748;
+      border-color: #4a5568;
+    }
+    .dark-mode .window:hover {
+      background-color: #4a5568;
+    }
+    .dark-mode header {
+      background-color: #2b6cb0;
+    }
+    .dark-mode footer {
+      background-color: #2d3748;
+    }
+    .dark-mode #details-page {
+      background-color: #1a202c;
+    }
+    .dark-mode #details-page .bg-white {
+      background-color: #2d3748;
+      color: #e2e8f0;
+    }
+    .dark-mode #dashboard-section {
+      background-color: #2d3748;
+      color: #e2e8f0;
+    }
+    .notification {
+      display: none;
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 1rem;
+      border-radius: 4px;
+      color: white;
+      z-index: 1000;
+    }
+    .notification.show {
+      display: block;
+    }
+    .bg-green-600 {
+      background: #16a34a; /* Green for success */
+    }
+    .bg-red-600 {
+      background: #ef4444; /* Red for errors */
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-content {
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 500px;
+      position: relative;
+    }
+    .modal-content.dark-mode {
+      background-color: #2d3748;
+      color: #e2e8f0;
+    }
+    .close-modal {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      cursor: pointer;
+      font-size: 24px;
+    }
+    nav a, nav button {
+      cursor: pointer;
+      transition: background-color 0.2s;
+      pointer-events: auto;
+    }
+    nav a:hover, nav button:hover {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+    header {
+      z-index: 50;
+    }
+    section.course-section {
+      width: 100vw;
+      height: 56.25vw; /* 16:9 aspect ratio */
+      max-height: 100vh;
+      background-size: cover;
+      background-position: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    @media (max-width: 768px) {
+      .grid-cols-5 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      nav ul {
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 font-sans transition-colors duration-300">
+  <div id="notification" class="notification"></div>
+  <div id="main-page" class="min-h-screen flex flex-col">
+    <header class="bg-blue-600 text-white p-4 fixed top-0 w-full">
+      <div class="flex justify-between items-center max-w-7xl mx-auto">
+        <h1 class="text-3xl font-bold">SkyLimit TechHub Academy</h1>
+        <nav class="flex items-center gap-4">
+          <ul class="flex gap-4 items-center">
+            <li><a href="/" class="px-2 py-1 rounded hover:underline">Home</a></li>
+            <li><a href="#courses" class="px-2 py-1 rounded hover:underline">Courses</a></li>
+            <li><a href="#dashboard-section" class="px-2 py-1 rounded hover:underline">Dashboard</a></li>
+            <li><button id="sign-in-btn" class="px-2 py-1 rounded hover:underline">Sign In</button></li>
+            <li><button id="sign-up-btn" class="px-2 py-1 rounded hover:underline">Sign Up</button></li>
+            <li><button id="contact-us-btn" class="px-2 py-1 rounded hover:underline">Contact Us</button></li>
+          </ul>
+          <button id="darkModeToggle" class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 dark:bg-gray-600 dark:text-white dark:hover:bg-gray-500">
+            Toggle Dark Mode
+          </button>
+        </nav>
+      </div>
+    </header>
+    <main class="flex-grow p-6 pt-20">
+      <section id="home" class="mb-8 max-w-7xl mx-auto">
+        <h2 class="text-3xl font-bold text-center mb-4">Welcome to SkyLimit TechHub Academy</h2>
+        <p class="text-center">Explore our wide range of data science and tech specializations to advance your career.</p>
+      </section>
+      <section id="courses" class="mb-8">
+        <h2 class="text-3xl font-bold text-center mb-8">Choose Your Specialization</h2>
+        <div class="grid grid-cols-5 gap-4 max-w-7xl mx-auto">
+          <div class="window"><span>Business Analyst</span><button class="more-info px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" data-specialization="Business Analyst">More Info</button></div>
+          <div class="window"><span>Data Scientist</span><button class="more-info px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" data-specialization="Data Scientist">More Info</button></div>
+          <div class="window"><span>Data Analyst</span><button class="more-info px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" data-specialization="Data Analyst">More Info</button></div>
+          <div class="window"><span>Machine Learning Engineer</span><button class="more-info px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" data-specialization="Machine Learning Engineer">More Info</button></div>
+          <div class="window"><span>Data Engineer</span><button class="more-info px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" data-specialization="Data Engineer">More Info</button></div>
+        </div>
+      </section>
+      <section id="course-sections" class="mb-8">
+        <h2 class="text-3xl font-bold text-center mb-8">Our Programs</h2>
+        <section class="course-section text-white" style="background-image: url('https://source.unsplash.com/1600x900/?data,technology');">
+          <div>
+            <h2 class="text-4xl font-bold mb-4">Data Science Bootcamp</h2>
+            <a href="/course1.html" target="_blank" class="bg-white text-blue-900 px-5 py-2 rounded">More Info</a>
+          </div>
+        </section>
+        <section class="course-section text-white" style="background-image: url('https://source.unsplash.com/1600x900/?analytics,ai');">
+          <div>
+            <h2 class="text-4xl font-bold mb-4">AI for Professionals</h2>
+            <a href="/course2.html" target="_blank" class="bg-white text-blue-900 px-5 py-2 rounded">More Info</a>
+          </div>
+        </section>
+        <section class="course-section text-white" style="background-image: url('https://source.unsplash.com/1600x900/?cloud,programming');">
+          <div>
+            <h2 class="text-4xl font-bold mb-4">Cloud & DevOps Program</h2>
+            <a href="/course3.html" target="_blank" class="bg-white text-blue-900 px-5 py-2 rounded">More Info</a>
+          </div>
+        </section>
+        <section class="course-section text-white" style="background-image: url('https://source.unsplash.com/1600x900/?database,code');">
+          <div>
+            <h2 class="text-4xl font-bold mb-4">SQL & Database Mastery</h2>
+            <a href="/course4.html" target="_blank" class="bg-white text-blue-900 px-5 py-2 rounded">More Info</a>
+          </div>
+        </section>
+        <section class="course-section text-white" style="background-image: url('https://source.unsplash.com/1600x900/?business,leadership');">
+          <div>
+            <h2 class="text-4xl font-bold mb-4">Professional Certificate in Tech Management</h2>
+            <a href="/course5.html" target="_blank" class="bg-white text-blue-900 px-5 py-2 rounded">More Info</a>
+          </div>
+        </section>
+      </section>
+      <section id="dashboard-section" class="hidden p-6 bg-white shadow-md max-w-4xl mx-auto my-8 rounded-lg">
+        <h2 class="text-2xl font-bold text-center mb-4">Your Learning Dashboard</h2>
+        <p class="text-center mb-4">Access exclusive resources, track your registered specializations and courses, and download materials.</p>
+        <div id="registered-specializations" class="mb-6">
+          <h3 class="text-xl font-semibold mb-2">Your Registered Specializations</h3>
+          <ul id="specialization-list" class="list-disc pl-6"></ul>
+        </div>
+        <div id="registered-courses" class="mb-6">
+          <h3 class="text-xl font-semibold mb-2">Your Registered Courses</h3>
+          <ul id="course-list" class="list-disc pl-6"></ul>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <a href="/resources/data-science.pdf" download class="block bg-blue-600 text-white px-4 py-2 rounded-lg text-center hover:bg-blue-700">Download Data Science Guide</a>
+          <a href="/resources/ai-professionals.pdf" download class="block bg-blue-600 text-white px-4 py-2 rounded-lg text-center hover:bg-blue-700">Download AI Handbook</a>
+          <a href="/resources/devops.pdf" download class="block bg-blue-600 text-white px-4 py-2 rounded-lg text-center hover:bg-blue-700">Download Cloud & DevOps</a>
+          <a href="/resources/sql.pdf" download class="block bg-blue-600 text-white px-4 py-2 rounded-lg text-center hover:bg-blue-700">Download SQL Mastery</a>
+          <a href="/resources/tech-management.pdf" download class="block bg-blue-600 text-white px-4 py-2 rounded-lg text-center hover:bg-blue-700">Download Tech Toolkit</a>
+        </div>
+      </section>
+    </main>
+    <footer class="bg-gray-800 text-white p-4">
+      <p class="text-sm text-center">© 2025 SkyLimit TechHub Academy. All rights reserved!</p>
+      <p class="text-sm text-center mt-2">
+        <a href="mailto:skylimittechhub@gmail.com" class="text-blue-400 underline">skylimittechhub@gmail.com</a> |
+        <a href="#" class="text-blue-400 underline">Twitter</a> |
+        <a href="#" class="text-blue-400 underline">LinkedIn</a>
+      </p>
+    </footer>
+  </div>
+
+  <!-- Sign In Modal -->
+  <div id="sign-in-modal" class="modal">
+    <div class="modal-content">
+      <span class="close-modal">×</span>
+      <h2 class="text-2xl font-bold mb-4">Sign In</h2>
+      <form id="sign-in-form" class="space-y-4">
+        <div>
+          <label for="signin-email" class="block text-sm font-medium">Email</label>
+          <input type="email" id="signin-email" name="email" required class="w-full p-2 border rounded">
+        </div>
+        <div>
+          <label for="signin-password" class="block text-sm font-medium">Password</label>
+          <input type="password" id="signin-password" name="password" required class="w-full p-2 border rounded">
+        </div>
+        <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Sign In</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sign Up Modal -->
+  <div id="sign-up-modal" class="modal">
+    <div class="modal-content">
+      <span class="close-modal">×</span>
+      <h2 class="text-2xl font-bold mb-4">Sign Up</h2>
+      <form id="sign-up-form" class="space-y-4">
+        <div>
+          <label for="signup-email" class="block text-sm font-medium">Email</label>
+          <input type="email" id="signup-email" name="email" required class="w-full p-2 border rounded">
+        </div>
+        <div>
+          <label for="signup-password" class="block text-sm font-medium">Password</label>
+          <input type="password" id="signup-password" name="password" required class="w-full p-2 border rounded">
+        </div>
+        <div>
+          <label for="signup-name" class="block text-sm font-medium">Full Name</label>
+          <input type="text" id="signup-name" name="name" required class="w-full p-2 border rounded">
+        </div>
+        <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Sign Up</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Contact Us Modal -->
+  <div id="contact-us-modal" class="modal">
+    <div class="modal-content">
+      <span class="close-modal">×</span>
+      <h2 class="text-2xl font-bold mb-4">Contact Us</h2>
+      <form id="contact-us-form" class="space-y-4">
+        <div>
+          <label for="contact-name" class="block text-sm font-medium">Name</label>
+          <input type="text" id="contact-name" name="name" required class="w-full p-2 border rounded">
+        </div>
+        <div>
+          <label for="contact-email" class="block text-sm font-medium">Email</label>
+          <input type="email" id="contact-email" name="email" required class="w-full p-2 border rounded">
+        </div>
+        <div>
+          <label for="contact-message" class="block text-sm font-medium">Message</label>
+          <textarea id="contact-message" name="message" required class="w-full p-2 border rounded" rows="4"></textarea>
+        </div>
+        <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Submit</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Details Page -->
+  <div id="details-page" class="hidden min-h-screen flex flex-col bg-gray-100">
+    <header class="bg-blue-600 text-white p-4 fixed top-0 w-full">
+      <div class="flex justify-between items-center max-w-7xl mx-auto">
+        <h1 id="specialization-title" class="text-2xl font-bold"></h1>
+        <nav class="flex items-center gap-4">
+          <ul class="flex gap-4 items-center">
+            <li><a href="/" class="px-2 py-1 rounded hover:underline">Home</a></li>
+            <li><a href="#courses" class="px-2 py-1 rounded hover:underline">Courses</a></li>
+            <li><a href="#dashboard-section" class="px-2 py-1 rounded hover:underline">Dashboard</a></li>
+            <li><button id="sign-in-btn-details" class="px-2 py-1 rounded hover:underline">Sign In</button></li>
+            <li><button id="sign-up-btn-details" class="px-2 py-1 rounded hover:underline">Sign Up</button></li>
+            <li><button id="contact-us-btn-details" class="px-2 py-1 rounded hover:underline">Contact Us</button></li>
+          </ul>
+          <button id="darkModeToggleDetails" class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 dark:bg-gray-600 dark:text-white dark:hover:bg-gray-500">
+            Toggle Dark Mode
+          </button>
+        </nav>
+      </div>
+    </header>
+    <main class="flex-grow p-6 pt-20">
+      <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-md">
+        <h2 class="text-2xl font-semibold mb-4">Roles and Responsibilities</h2>
+        <p id="roles-responsibilities" class="mb-6"></p>
+        <h2 class="text-2xl font-semibold mb-4">Core Courses</h2>
+        <ul id="core-courses" class="list-disc pl-6 mb-6"></ul>
+        <h2 class="text-2xl font-semibold mb-4">Core Programming Languages</h2>
+        <ul id="programming-languages" class="list-disc pl-6 mb-6"></ul>
+        <div class="flex space-x-4">
+          <button id="read-btn" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Read</button>
+          <button id="stop-btn" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Stop</button>
+          <button id="start-class-btn" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Start Class</button>
+          <button id="register-btn" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">Register for Specialization</button>
+          <button id="close-btn" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">Close</button>
+        </div>
+      </div>
+    </main>
+    <footer class="bg-gray-800 text-white p-4">
+      <p class="text-sm text-center">© 2025 SkyLimit TechHub Academy. All rights reserved!</p>
+      <p class="text-sm text-center mt-2">
+        <a href="mailto:skylimittechhub@gmail.com" class="text-blue-400 underline">skylimittechhub@gmail.com</a> |
+        <a href="#" class="text-blue-400 underline">Twitter</a> |
+        <a href="#" class="text-blue-400 underline">LinkedIn</a>
+      </p>
+    </footer>
+  </div>
+
+  <script>
+    // Specialization Data
+    const specializations = {
+      "Business Analyst": {
+        roles: "A Business Analyst (BA) serves as a critical liaison between business stakeholders and technical teams...",
+        courses: [
+          "Business Analysis Fundamentals",
+          "Requirements Gathering & Elicitation Techniques",
+          "SQL for Data Analysis",
+          "Data Visualization with Excel/Tableau/Power BI",
+          "Business Process Modeling (BPMN)",
+          "Agile & Scrum Methodologies",
+          "Stakeholder Management & Communication",
+          "Financial & Business Case Analysis",
+          "Introduction to Project Management",
+          "Tools for BAs: JIRA, Confluence, Lucidchart"
+        ],
+        languages: [
+          "SQL – For querying and analyzing structured data",
+          "Python – For data analysis, automation, and basic predictive modeling",
+          "R – For statistical analysis and data visualization",
+          "DAX – For advanced Power BI calculations",
+          "VBA – For Excel-based automation and reporting"
+        ]
+      },
+      "Data Scientist": {
+        roles: "A Data Scientist extracts insights and builds predictive or prescriptive models...",
+        courses: [
+          "Statistics & Probability for Data Science",
+          "Machine Learning Fundamentals",
+          "Data Wrangling and Cleaning",
+          "Exploratory Data Analysis",
+          "Deep Learning and Neural Networks",
+          "Model Evaluation & Selection",
+          "SQL for Data Extraction",
+          "Data Visualization with Python/R",
+          "Big Data Tools (Spark, Hadoop)",
+          "Cloud Platforms for ML (AWS/GCP/Azure)"
+        ],
+        languages: [
+          "Python – Core language for ML, data analysis, and automation",
+          "R – For statistical computing and data visualization",
+          "SQL – For querying databases",
+          "Scala – Used in big data (Spark) environments",
+          "Java – For production-grade model deployment"
+        ]
+      },
+      "Data Analyst": {
+        roles: "A Data Analyst interprets data to provide actionable insights for business decisions...",
+        courses: [
+          "Data Analysis Fundamentals",
+          "SQL for Data Analysis",
+          "Excel for Data Analysis",
+          "Data Visualization with Tableau",
+          "Statistics for Data Analysis",
+          "Data Cleaning Techniques"
+        ],
+        languages: [
+          "SQL – For querying and analyzing data",
+          "Python – For data manipulation and visualization",
+          "R – For statistical analysis",
+          "Excel/VBA – For reporting and automation"
+        ]
+      },
+      "Machine Learning Engineer": {
+        roles: "A Machine Learning Engineer designs and deploys machine learning models...",
+        courses: [
+          "Machine Learning Fundamentals",
+          "Deep Learning with TensorFlow",
+          "Model Deployment and Scaling",
+          "Big Data with Spark",
+          "Cloud ML Platforms",
+          "Advanced Algorithms"
+        ],
+        languages: [
+          "Python – For ML model development",
+          "SQL – For data extraction",
+          "Java – For production systems",
+          "C++ – For performance optimization"
+        ]
+      },
+      "Data Engineer": {
+        roles: "A Data Engineer builds and maintains data pipelines and infrastructure...",
+        courses: [
+          "Data Pipeline Development",
+          "Big Data with Hadoop and Spark",
+          "Cloud Data Solutions (AWS/GCP/Azure)",
+          "SQL and NoSQL Databases",
+          "ETL Processes",
+          "Data Warehousing"
+        ],
+        languages: [
+          "Python – For scripting and automation",
+          "SQL – For database management",
+          "Scala – For big data processing",
+          "Java – For enterprise systems"
+        ]
+      }
+    };
+
+    // Function to show notification
+    function showNotification(message, isSuccess = false) {
+      console.log(isSuccess ? 'Success:' : 'Error:', message);
+      const notification = document.getElementById('notification');
+      if (notification) {
+        notification.textContent = message;
+        notification.className = `notification ${isSuccess ? 'bg-green-600' : 'bg-red-600'} show`;
+        setTimeout(() => notification.classList.remove('show'), 5000);
+      } else {
+        console.error('Notification element not found');
+      }
+    }
+
+    // Function to send Formsubmit notification
+    async function sendNotification(message) {
+      try {
+        console.log('Sending notification:', message);
+        await fetch("https://formsubmit.co/ajax/skylimittechhub@gmail.com", {
+          method: "POST",
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message })
+        });
+        console.log('Notification sent successfully');
+      } catch (error) {
+        console.error('Failed to send notification:', error);
+        showNotification('Failed to send notification: ' + error.message);
+      }
+    }
+
+    // Function to show details page
+    function showDetails(specialization) {
+      const spec = specializations[specialization];
+      if (!spec) {
+        showNotification('Specialization not found.');
+        return;
+      }
+
+      const mainPage = document.getElementById('main-page');
+      const detailsPage = document.getElementById('details-page');
+      const title = document.getElementById('specialization-title');
+      const roles = document.getElementById('roles-responsibilities');
+      const courses = document.getElementById('core-courses');
+      const languages = document.getElementById('programming-languages');
+
+      if (mainPage && detailsPage && title && roles && courses && languages) {
+        title.textContent = specialization;
+        roles.textContent = spec.roles;
+        courses.innerHTML = spec.courses.map(course => `<li>${course}</li>`).join('');
+        languages.innerHTML = spec.languages.map(lang => `<li>${lang}</li>`).join('');
+
+        mainPage.classList.add('hidden');
+        detailsPage.classList.remove('hidden');
+      } else {
+        showNotification('DOM elements missing for details page.');
+      }
+    }
+
+    // Function to close details page
+    function closeDetails() {
+      const mainPage = document.getElementById('main-page');
+      const detailsPage = document.getElementById('details-page');
+      if (mainPage && detailsPage) {
+        mainPage.classList.remove('hidden');
+        detailsPage.classList.add('hidden');
+      }
+    }
+
+    // Function to toggle dark mode
+    function toggleDarkMode() {
+      const isDark = document.body.classList.toggle('dark-mode');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      const toggleButtons = [document.getElementById('darkModeToggle'), document.getElementById('darkModeToggleDetails')];
+      toggleButtons.forEach(btn => {
+        if (btn) btn.textContent = isDark ? 'Light Mode' : 'Dark Mode';
+      });
+      document.querySelectorAll('.modal-content').forEach(modal => {
+        modal.classList.toggle('dark-mode', isDark);
+      });
+    }
+
+    // Firebase Initialization
+    let auth, db;
+    function initializeFirebase() {
+      try {
+        const firebaseConfig = {
+          apiKey: "AIzaSyD-4QGYG_3aFxMPPbYLRXwl0z0Bl-YA-A8",
+          authDomain: "skylimit-techhub.firebaseapp.com",
+          projectId: "skylimit-techhub",
+          storageBucket: "skylimit-techhub.appspot.com",
+          messagingSenderId: "888239643804",
+          appId: "1:888239643804:web:b52d46d9b963500933bce3"
+        };
+        const app = firebase.initializeApp(firebaseConfig);
+        auth = firebase.auth.getAuth(app);
+        db = firebase.firestore.getFirestore(app);
+        console.log('Firebase initialized successfully.');
+      } catch (error) {
+        showNotification('Firebase initialization failed: ' + error.message);
+        console.error('Firebase error:', error);
+      }
+    }
+
+    // Update UI based on auth state
+    function updateAuthUI(user) {
+      const dashboardSection = document.getElementById('dashboard-section');
+      if (dashboardSection) {
+        if (user) {
+          dashboardSection.classList.remove('hidden');
+          loadUserData(user);
+        } else {
+          dashboardSection.classList.add('hidden');
+          const specializationList = document.getElementById('specialization-list');
+          const courseList = document.getElementById('course-list');
+          if (specializationList) specializationList.innerHTML = '';
+          if (courseList) courseList.innerHTML = '';
+        }
+      }
+    }
+
+    // Load user registered specializations and courses
+    async function loadUserData(user) {
+      try {
+        const userDocRef = firebase.firestore.doc(db, 'users', user.uid);
+        const userDoc = await firebase.firestore.getDoc(userDocRef);
+        const specializationList = document.getElementById('specialization-list');
+        const courseList = document.getElementById('course-list');
+
+        if (specializationList && courseList) {
+          specializationList.innerHTML = '';
+          courseList.innerHTML = '';
+
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            const specializations = data.specializations || [];
+            const courses = data.courses || [];
+
+            specializationList.innerHTML = specializations.length > 0
+              ? specializations.map(spec => `<li>${spec}</li>`).join('')
+              : '<li>No specializations registered.</li>';
+
+            courseList.innerHTML = courses.length > 0
+              ? courses.map(course => `<li>${course}</li>`).join('')
+              : '<li>No courses registered.</li>';
+          } else {
+            specializationList.innerHTML = '<li>No specializations registered.</li>';
+            courseList.innerHTML = '<li>No courses registered.</li>';
+          }
+        }
+      } catch (error) {
+        showNotification('Error loading user data: ' + error.message);
+      }
+    }
+
+    // Register specialization and its courses
+    async function registerSpecialization(specialization) {
+      if (!auth.currentUser) {
+        showNotification('Please sign in to register for a specialization.');
+        return;
+      }
+
+      try {
+        const user = auth.currentUser;
+        const spec = specializations[specialization];
+        if (!spec) {
+          showNotification('Specialization not found.');
+          return;
+        }
+
+        const userDocRef = firebase.firestore.doc(db, 'users', user.uid);
+        const userDoc = await firebase.firestore.getDoc(userDocRef);
+        let userData = userDoc.exists() ? userDoc.data() : { specializations: [], courses: [] };
+
+        if (!userData.specializations.includes(specialization)) {
+          userData.specializations.push(specialization);
+          userData.courses = [...new Set([...userData.courses, ...spec.courses])];
+          await firebase.firestore.setDoc(userDocRef, userData);
+          showNotification('Successfully registered for ' + specialization, true);
+          sendNotification(`User ${user.email} registered for specialization: ${specialization}`);
+          loadUserData(user);
+        } else {
+          showNotification('You are already registered for ' + specialization);
+        }
+      } catch (error) {
+        showNotification('Error registering specialization: ' + error.message);
+      }
+    }
+
+    // Handle modal visibility
+    function openModal(modalId) {
+      const modal = document.getElementById(modalId);
+      if (modal) modal.style.display = 'flex';
+    }
+
+    function closeModal(modalId) {
+      const modal = document.getElementById(modalId);
+      if (modal) modal.style.display = 'none';
+    }
+
+    // Handle form submissions
+    function handleSignIn(event) {
+      event.preventDefault();
+      const email = document.getElementById('signin-email')?.value;
+      const password = document.getElementById('signin-password')?.value;
+
+      console.log('Sign-in attempt:', { email });
+      if (email && password) {
+        firebase.auth.signInWithEmailAndPassword(auth, email, password)
+          .then(() => {
+            console.log('Sign-in successful');
+            closeModal('sign-in-modal');
+            showNotification('Signed in successfully!', true);
+            sendNotification(`Sign-in attempt successful for ${email}`);
+          })
+          .catch(error => {
+            console.error('Sign-in failed:', error);
+            showNotification('Sign-in error: ' + error.message);
+            sendNotification(`Sign-in attempt failed for ${email}: ${error.message}`);
+          });
+      } else {
+        console.warn('Sign-in form incomplete');
+        showNotification('Please fill in all fields.');
+        sendNotification(`Sign-in attempt failed: Missing email or password`);
+      }
+    }
+
+    function handleSignUp(event) {
+      event.preventDefault();
+      const email = document.getElementById('signup-email')?.value;
+      const password = document.getElementById('signup-password')?.value;
+      const name = document.getElementById('signup-name')?.value;
+
+      console.log('Sign-up attempt:', { email, name });
+      if (email && password && name) {
+        firebase.auth.createUserWithEmailAndPassword(auth, email, password)
+          .then(async (userCredential) => {
+            const user = userCredential.user;
+            console.log('Sign-up successful, user:', user.uid);
+            await firebase.firestore.setDoc(firebase.firestore.doc(db, 'users', user.uid), {
+              name: name,
+              email: email,
+              specializations: [],
+              courses: [],
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            closeModal('sign-up-modal');
+            showNotification('Signed up successfully!', true);
+            sendNotification(`New user signed up: ${email}`);
+          })
+          .catch(error => {
+            console.error('Sign-up failed:', error);
+            showNotification('Sign-up error: ' + error.message);
+            sendNotification(`Sign-up attempt failed for ${email}: ${error.message}`);
+          });
+      } else {
+        console.warn('Sign-up form incomplete');
+        showNotification('Please fill in all fields.');
+        sendNotification(`Sign-up attempt failed: Missing required fields`);
+      }
+    }
+
+    function handleContactUs(event) {
+      event.preventDefault();
+      const name = document.getElementById('contact-name')?.value;
+      const email = document.getElementById('contact-email')?.value;
+      const message = document.getElementById('contact-message')?.value;
+
+      console.log('Contact Us attempt:', { name, email, message });
+      if (name && email && message) {
+        closeModal('contact-us-modal');
+        showNotification('Message sent successfully!', true);
+        sendNotification(`Contact Us message from ${name} (${email}): ${message}`);
+      } else {
+        console.warn('Contact Us form incomplete');
+        showNotification('Please fill in all fields.');
+        sendNotification(`Contact Us attempt failed: Missing required fields`);
+      }
+    }
+
+    // Initialize app
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('DOM fully loaded');
+
+      // Apply saved theme
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      if (savedTheme === 'dark') {
+        document.body.classList.add('dark-mode');
+        const toggleButtons = [document.getElementById('darkModeToggle'), document.getElementById('darkModeToggleDetails')];
+        toggleButtons.forEach(btn => {
+          if (btn) btn.textContent = 'Light Mode';
+        });
+        document.querySelectorAll('.modal-content').forEach(modal => {
+          modal.classList.add('dark-mode');
+        });
+      }
+
+      // Initialize Firebase
+      if (window.firebase) {
+        initializeFirebase();
+      } else {
+        showNotification('Firebase SDK not loaded. Please check your network or CDN.');
+        return;
+      }
+
+      // Firebase Auth State Listener
+      if (auth) {
+        firebase.auth.onAuthStateChanged(auth, user => {
+          console.log('Auth state changed:', user ? user.uid : 'No user');
+          updateAuthUI(user);
+          if (user) {
+            sendNotification(`${user.email} has logged in.`);
+          }
+        });
+      }
+
+      // Event listeners
+      const elements = {
+        darkModeToggle: document.getElementById('darkModeToggle'),
+        darkModeToggleDetails: document.getElementById('darkModeToggleDetails'),
+        signInBtn: document.getElementById('sign-in-btn'),
+        signUpBtn: document.getElementById('sign-up-btn'),
+        contactUsBtn: document.getElementById('contact-us-btn'),
+        signInBtnDetails: document.getElementById('sign-in-btn-details'),
+        signUpBtnDetails: document.getElementById('sign-up-btn-details'),
+        contactUsBtnDetails: document.getElementById('contact-us-btn-details'),
+        signInForm: document.getElementById('sign-in-form'),
+        signUpForm: document.getElementById('sign-up-form'),
+        contactUsForm: document.getElementById('contact-us-form'),
+        readBtn: document.getElementById('read-btn'),
+        stopBtn: document.getElementById('stop-btn'),
+        startClassBtn: document.getElementById('start-class-btn'),
+        registerBtn: document.getElementById('register-btn'),
+        closeBtn: document.getElementById('close-btn')
+      };
+
+      if (elements.darkModeToggle) elements.darkModeToggle.addEventListener('click', toggleDarkMode);
+      if (elements.darkModeToggleDetails) elements.darkModeToggleDetails.addEventListener('click', toggleDarkMode);
+
+      if (elements.signInBtn) elements.signInBtn.addEventListener('click', () => openModal('sign-in-modal'));
+      if (elements.signUpBtn) elements.signUpBtn.addEventListener('click', () => openModal('sign-up-modal'));
+      if (elements.contactUsBtn) elements.contactUsBtn.addEventListener('click', () => openModal('contact-us-modal'));
+      if (elements.signInBtnDetails) elements.signInBtnDetails.addEventListener('click', () => openModal('sign-in-modal'));
+      if (elements.signUpBtnDetails) elements.signUpBtnDetails.addEventListener('click', () => openModal('sign-up-modal'));
+      if (elements.contactUsBtnDetails) elements.contactUsBtnDetails.addEventListener('click', () => openModal('contact-us-modal'));
+
+      document.querySelectorAll('.close-modal').forEach(button => {
+        button.addEventListener('click', () => {
+          const modal = button.closest('.modal');
+          if (modal) closeModal(modal.id);
+        });
+      });
+
+      if (elements.signInForm) elements.signInForm.addEventListener('submit', handleSignIn);
+      if (elements.signUpForm) elements.signUpForm.addEventListener('submit', handleSignUp);
+      if (elements.contactUsForm) elements.contactUsForm.addEventListener('submit', handleContactUs);
+
+      document.querySelectorAll('.more-info').forEach(button => {
+        button.addEventListener('click', () => {
+          const specialization = button.getAttribute('data-specialization');
+          showDetails(specialization);
+        });
+      });
+
+      if (elements.readBtn) {
+        elements.readBtn.addEventListener('click', () => {
+          if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            const title = document.getElementById('specialization-title')?.textContent;
+            const spec = specializations[title];
+            if (!spec) {
+              showNotification('No specialization data available.');
+              return;
+            }
+            const textToRead = `
+              Specialization: ${title}.
+              Roles and Responsibilities: ${spec.roles}.
+              Core Courses: ${spec.courses.join(', ')}.
+              Core Programming Languages: ${spec.languages.join(', ')}.
+            `;
+            const utterance = new SpeechSynthesisUtterance(textToRead);
+            utterance.lang = 'en-US';
+            utterance.rate = 1.0;
+            window.speechSynthesis.speak(utterance);
+          } else {
+            showNotification('Speech synthesis not supported in this browser.');
+          }
+        });
+      }
+
+      if (elements.stopBtn) {
+        elements.stopBtn.addEventListener('click', () => {
+          if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+          }
+        });
+      }
+
+      if (elements.startClassBtn) {
+        elements.startClassBtn.addEventListener('click', () => {
+          window.open('https://skylimittechhub.org/contact-us', '_blank');
+        });
+      }
+
+      if (elements.registerBtn) {
+        elements.registerBtn.addEventListener('click', () => {
+          const specialization = document.getElementById('specialization-title')?.textContent;
+          if (specialization) registerSpecialization(specialization);
+        });
+      }
+
+      if (elements.closeBtn) elements.closeBtn.addEventListener('click', closeDetails);
+    });
+  </script>
+</body>
+</html>
